@@ -33,7 +33,11 @@ classifiers = [
 # TODO: add keywords
 keywords = []
 # TODO: add dependencies
-dependencies = []
+dependencies = [
+    "tornado",
+    "repoproviders",
+    "jinja2"
+]
 
 [project.urls]
 Homepage = "https://github.com/yuvipanda/jupyterbook.pub"
@@ -49,7 +53,7 @@ Download = "https://pypi.org/project/jupyterbook.pub/#files"
 dev = [
     "hatch",
     "pre-commit",
-    "jupyterbook_pub[docs,types,audit]",
+    "jupyterbook_pub[docs,types]",
 ]
 
 docs = [
