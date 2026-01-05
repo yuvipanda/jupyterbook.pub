@@ -111,8 +111,13 @@ class RepoHandler(BaseHandler):
                 if mimetype:
                     self.set_header("Content-Type", mimetype)
                 with open(full_path, "rb") as f:
-                    # This is super inefficient
-                    self.write(f.read())
+                    # hard code the chunk size for now
+                    # 64 * 1024 is what tornado uses https://github.com/tornadoweb/tornado/blob/e14929c305019fd494c74934445f0b72af4f98ab/tornado/web.py#L3020
+                    while True:
+                        chunk = f.read(64 * 1024)
+                        if not chunk:
+                            break
+                        self.write(chunk)
             case MaybeExists(repo):
                 pass
             case DoesNotExist(repo):
