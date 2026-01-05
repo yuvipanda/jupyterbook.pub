@@ -1,0 +1,21 @@
+{
+  "name": "jupyterbook.pub",
+  "private": true,
+  "version": "0.0.0",
+  "source": "src/index.html",
+  "scripts": {
+    "dev:watch": "parcel src/index.html --dist-dir ../src/jupyterbook_pub/generated_static",
+    "build": "parcel build"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.8",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@parcel/transformer-sass": "^2.16.3",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "parcel": "^2.14.0"
+  }
+}

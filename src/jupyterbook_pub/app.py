@@ -62,11 +62,6 @@ class BaseHandler(RequestHandler):
         self.log = app.log
 
 
-class HomeHandler(BaseHandler):
-    def get(self):
-        self.write(self.app.templates_loader.get_template("home.html").render())
-
-
 class RepoHandler(BaseHandler):
 
     def get_spec_from_request(self, prefix):
@@ -175,12 +170,14 @@ class JupyterBookPubApp(Application):
         self.initialize()
         self.web_app = tornado.web.Application(
             [
-                ("/", HomeHandler, {"app": self}),
                 url(r"/repo/(.*?)/(.*)", RepoHandler, {"app": self}, name="repo"),
                 (
-                    "/static/(.*)",
+                    "/(.*)",
                     StaticFileHandler,
-                    {"path": str(Path(__file__).parent / "static")},
+                    {
+                        "path": str(Path(__file__).parent / "generated_static"),
+                        "default_filename": "index.html",
+                    },
                 ),
             ],
             debug=self.debug,
