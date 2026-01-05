@@ -7,11 +7,11 @@ Every little bit helps, and credit will always be given.
 
 You can contribute in many ways, for example:
 
-* [Report bugs](#report-bugs)
-* [Fix Bugs](#fix-bugs)
-* [Implement Features](#implement-features)
-* [Write Documentation](#write-documentation)
-* [Submit Feedback](#submit-feedback)
+- [Report bugs](#report-bugs)
+- [Fix Bugs](#fix-bugs)
+- [Implement Features](#implement-features)
+- [Write Documentation](#write-documentation)
+- [Submit Feedback](#submit-feedback)
 
 ### Report Bugs
 
@@ -59,40 +59,41 @@ local development.
 
 1. Fork the https://github.com/yuvipanda/jupyterbook.pub
    repository on GitHub.
-2. Clone your fork locally (*if you want to work locally*)
 
-    ```shell
-    git clone git@github.com:your_name_here/jupyterbook.pub.git
-    ```
+1. Clone your fork locally (*if you want to work locally*)
 
-3. [Install hatch](https://hatch.pypa.io/latest/install/).
+   ```shell
+   git clone git@github.com:your_name_here/jupyterbook.pub.git
+   ```
 
-4. Create a branch for local development using the default branch (typically `main`) as a starting point. Use `fix` or `feat` as a prefix for your branch name.
+1. [Install hatch](https://hatch.pypa.io/latest/install/).
 
-    ```shell
-    git checkout main
-    git checkout -b fix-name-of-your-bugfix
-    ```
+1. Create a branch for local development using the default branch (typically `main`) as a starting point. Use `fix` or `feat` as a prefix for your branch name.
 
-    Now you can make your changes locally.
+   ```shell
+   git checkout main
+   git checkout -b fix-name-of-your-bugfix
+   ```
 
-5. When you're done making changes, apply the quality assurance tools and check
+   Now you can make your changes locally.
+
+1. When you're done making changes, apply the quality assurance tools and check
    that your changes pass our test suite. This is all included with tox
 
-    ```shell
-    hatch run test:run
-    ```
+   ```shell
+   hatch run test:run
+   ```
 
-6. Commit your changes and push your branch to GitHub. Please use [semantic
+1. Commit your changes and push your branch to GitHub. Please use [semantic
    commit messages](https://www.conventionalcommits.org/).
 
-    ```shell
-    git add .
-    git commit -m "fix: summarize your changes"
-    git push -u origin fix-name-of-your-bugfix
-    ```
+   ```shell
+   git add .
+   git commit -m "fix: summarize your changes"
+   git push -u origin fix-name-of-your-bugfix
+   ```
 
-7. Open the link displayed in the message when pushing your new branch in order
+1. Open the link displayed in the message when pushing your new branch in order
    to submit a pull request.
 
 ### Pull Request Guidelines
@@ -100,7 +101,7 @@ local development.
 Before you submit a pull request, check that it meets these guidelines:
 
 1. The pull request should include tests.
-2. If the pull request adds functionality, the docs should be updated. Put your
+1. If the pull request adds functionality, the docs should be updated. Put your
    new functionality into a function with a docstring.
-3. Your pull request will automatically be checked by the full test suite.
+1. Your pull request will automatically be checked by the full test suite.
    It needs to pass all of them before it can be considered for merging.

@@ -1,20 +1,23 @@
-import os
-from jinja2 import Environment, FileSystemLoader
-from pathlib import Path
-import dataclasses
-import shutil
-from repoproviders import resolve, fetch
-from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
-import mimetypes
 import asyncio
-from tornado.web import RequestHandler, StaticFileHandler, url
-import tornado
-import tempfile
-from urllib.parse import quote
+import dataclasses
 import hashlib
+import mimetypes
+import os
+import shutil
+from pathlib import Path
+
+import tornado
+from jinja2 import Environment, FileSystemLoader
+from repoproviders import fetch, resolve
+from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
+from tornado.web import RequestHandler, StaticFileHandler, url
+
 
 def hash_repo(repo: Repo) -> str:
-    return hashlib.sha256(f"{repo.__class__.__name__}:{dataclasses.asdict(repo)}".encode()).hexdigest()
+    return hashlib.sha256(
+        f"{repo.__class__.__name__}:{dataclasses.asdict(repo)}".encode()
+    ).hexdigest()
+
 
 async def render_if_needed(repo: Repo, base_url: str):
     repo_hash = hash_repo(repo)
@@ -28,12 +31,13 @@ async def render_if_needed(repo: Repo, base_url: str):
             await fetch(repo, repo_path)
             yield f"Fetched {repo}"
 
-        command = [
-            "jupyter", "book", "build", "--html"
-        ]
+        command = ["jupyter", "book", "build", "--html"]
         proc = await asyncio.create_subprocess_exec(
-            *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            cwd=repo_path, env=env
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=repo_path,
+            env=env,
         )
 
         stdout, stderr = [s.decode() for s in await proc.communicate()]
@@ -44,11 +48,16 @@ async def render_if_needed(repo: Repo, base_url: str):
 
         shutil.copytree(repo_path / "_build/html", built_path)
 
-templates_loader = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates"))
+
+templates_loader = Environment(
+    loader=FileSystemLoader(Path(__file__).parent / "templates")
+)
+
 
 class HomeHandler(RequestHandler):
     def get(self):
         self.write(templates_loader.get_template("home.html").render())
+
 
 class RepoHandler(RequestHandler):
 
@@ -87,7 +96,7 @@ class RepoHandler(RequestHandler):
                     mimetype = "application/gzip"
                 if mimetype:
                     self.set_header("Content-Type", mimetype)
-                with open(full_path, 'rb') as f:
+                with open(full_path, "rb") as f:
                     # This is super inefficient
                     print(f"serving {full_path}")
                     self.write(f.read())
@@ -98,13 +107,21 @@ class RepoHandler(RequestHandler):
 
 
 async def main():
-    app = tornado.web.Application([
-        ("/", HomeHandler),
-        url(r"/repo/(.*?)/(.*)", RepoHandler, name="repo"),
-        ("/static/(.*)", StaticFileHandler, {"path": str(Path(__file__).parent / "static")})
-    ], debug=True)
+    app = tornado.web.Application(
+        [
+            ("/", HomeHandler),
+            url(r"/repo/(.*?)/(.*)", RepoHandler, name="repo"),
+            (
+                "/static/(.*)",
+                StaticFileHandler,
+                {"path": str(Path(__file__).parent / "static")},
+            ),
+        ],
+        debug=True,
+    )
     app.listen(9200)
     await asyncio.Event().wait()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
