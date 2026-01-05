@@ -36,7 +36,9 @@ keywords = []
 dependencies = [
     "tornado",
     "repoproviders",
-    "jinja2"
+    "jinja2",
+    "cachetools",
+    "traitlets"
 ]
 
 [project.urls]

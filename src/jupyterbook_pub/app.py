@@ -1,16 +1,23 @@
+from __future__ import annotations
+
 import asyncio
 import dataclasses
 import hashlib
+import logging
 import mimetypes
 import os
 import shutil
 from pathlib import Path
+from typing import override
 
 import tornado
+from cachetools import TTLCache
 from jinja2 import Environment, FileSystemLoader
 from repoproviders import fetch, resolve
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
 from tornado.web import RequestHandler, StaticFileHandler, url
+from traitlets import Bool, Unicode
+from traitlets.config import Application
 
 
 def hash_repo(repo: Repo) -> str:
@@ -19,10 +26,13 @@ def hash_repo(repo: Repo) -> str:
     ).hexdigest()
 
 
-async def render_if_needed(repo: Repo, base_url: str):
+RESOLVER_CACHE = TTLCache(maxsize=128, ttl=10 * 60)
+
+
+async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
     repo_hash = hash_repo(repo)
-    repo_path = Path("repos") / repo_hash
-    built_path = Path("built") / repo_hash
+    repo_path = Path(app.repo_checkout_root) / repo_hash
+    built_path = Path(app.built_sites_root) / repo_hash
     env = os.environ.copy()
     env["BASE_URL"] = base_url
     if not built_path.exists():
@@ -49,17 +59,18 @@ async def render_if_needed(repo: Repo, base_url: str):
         shutil.copytree(repo_path / "_build/html", built_path)
 
 
-templates_loader = Environment(
-    loader=FileSystemLoader(Path(__file__).parent / "templates")
-)
+class BaseHandler(RequestHandler):
+    def initialize(self, app: JupyterBookPubApp):
+        self.app = app
+        self.log = app.log
 
 
-class HomeHandler(RequestHandler):
+class HomeHandler(BaseHandler):
     def get(self):
-        self.write(templates_loader.get_template("home.html").render())
+        self.write(self.app.templates_loader.get_template("home.html").render())
 
 
-class RepoHandler(RequestHandler):
+class RepoHandler(BaseHandler):
 
     def get_spec_from_request(self, prefix):
         """
@@ -75,17 +86,23 @@ class RepoHandler(RequestHandler):
         spec = self.get_spec_from_request("/repo/")
 
         raw_repo_spec, _ = spec.split("/", 1)
-        answers = await resolve(repo_spec, True)
-        last_answer = answers[-1]
-        print(1)
+        if repo_spec in RESOLVER_CACHE:
+            last_answer = RESOLVER_CACHE[repo_spec]
+            self.log.debug(f"Found {repo_spec} in cache")
+        else:
+            answers = await resolve(repo_spec, True)
+            if not answers:
+                raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
+            last_answer = answers[-1]
+            RESOLVER_CACHE[repo_spec] = last_answer
+            self.log.info(f"Resolved {repo_spec} to {last_answer}")
         match last_answer:
             case Exists(repo):
-                print(2)
                 repo_hash = hash_repo(repo)
-                built_path = Path("built") / repo_hash
+                built_path = Path(self.app.built_sites_root) / repo_hash
                 if not built_path.exists():
                     base_url = f"/repo/{raw_repo_spec}"
-                    async for line in render_if_needed(repo, base_url):
+                    async for line in render_if_needed(self.app, repo, base_url):
                         self.write(line)
                 # This is a *sure* path traversal attack
                 full_path = built_path / path
@@ -98,30 +115,62 @@ class RepoHandler(RequestHandler):
                     self.set_header("Content-Type", mimetype)
                 with open(full_path, "rb") as f:
                     # This is super inefficient
-                    print(f"serving {full_path}")
                     self.write(f.read())
             case MaybeExists(repo):
-                print(f"maybe exists {repo}")
+                pass
             case DoesNotExist(repo):
                 raise tornado.web.HTTPError(404, f"{repo} could not be resolved")
 
 
-async def main():
-    app = tornado.web.Application(
-        [
-            ("/", HomeHandler),
-            url(r"/repo/(.*?)/(.*)", RepoHandler, name="repo"),
-            (
-                "/static/(.*)",
-                StaticFileHandler,
-                {"path": str(Path(__file__).parent / "static")},
-            ),
-        ],
-        debug=True,
+class JupyterBookPubApp(Application):
+    debug = Bool(True, help="Turn on debug mode", config=True)
+
+    repo_checkout_root = Unicode(
+        str(Path(__file__).parent.parent.parent / "repos"),
+        help="Path to check out repos to. Created if it doesn't exist",
+        config=True,
     )
-    app.listen(9200)
-    await asyncio.Event().wait()
+
+    built_sites_root = Unicode(
+        str(Path(__file__).parent.parent.parent / "built_sites"),
+        help="Path to copy built files to. Created if it doesn't exist",
+        config=True,
+    )
+
+    @override
+    def initialize(self, argv=None) -> None:
+        super().initialize(argv)
+        if self.debug:
+            self.log_level = logging.DEBUG
+        tornado.options.options.logging = logging.getLevelName(self.log_level)
+        tornado.log.enable_pretty_logging()
+        self.log = tornado.log.app_log
+
+        self.templates_loader = Environment(
+            loader=FileSystemLoader(Path(__file__).parent / "templates")
+        )
+
+        os.makedirs(self.built_sites_root, exist_ok=True)
+        os.makedirs(self.repo_checkout_root, exist_ok=True)
+
+    async def start(self) -> None:
+        self.initialize()
+        self.web_app = tornado.web.Application(
+            [
+                ("/", HomeHandler, {"app": self}),
+                url(r"/repo/(.*?)/(.*)", RepoHandler, {"app": self}, name="repo"),
+                (
+                    "/static/(.*)",
+                    StaticFileHandler,
+                    {"path": str(Path(__file__).parent / "static")},
+                ),
+            ],
+            debug=self.debug,
+        )
+        self.web_app.listen(9200)
+        await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    app = JupyterBookPubApp()
+    asyncio.run(app.start())
