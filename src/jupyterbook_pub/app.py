@@ -16,7 +16,7 @@ from jinja2 import Environment, FileSystemLoader
 from repoproviders import fetch, resolve
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
 from tornado.web import RequestHandler, StaticFileHandler, url
-from traitlets import Bool, Unicode
+from traitlets import Bool, Instance, Integer, Unicode
 from traitlets.config import Application
 
 
@@ -24,9 +24,6 @@ def hash_repo(repo: Repo) -> str:
     return hashlib.sha256(
         f"{repo.__class__.__name__}:{dataclasses.asdict(repo)}".encode()
     ).hexdigest()
-
-
-RESOLVER_CACHE = TTLCache(maxsize=128, ttl=10 * 60)
 
 
 async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
@@ -86,15 +83,15 @@ class RepoHandler(BaseHandler):
         spec = self.get_spec_from_request("/repo/")
 
         raw_repo_spec, _ = spec.split("/", 1)
-        if repo_spec in RESOLVER_CACHE:
-            last_answer = RESOLVER_CACHE[repo_spec]
+        if repo_spec in self.app.resolver_cache:
+            last_answer = self.app.resolver_cache[repo_spec]
             self.log.debug(f"Found {repo_spec} in cache")
         else:
             answers = await resolve(repo_spec, True)
             if not answers:
                 raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
             last_answer = answers[-1]
-            RESOLVER_CACHE[repo_spec] = last_answer
+            self.app.resolver_cache[repo_spec] = last_answer
             self.log.info(f"Resolved {repo_spec} to {last_answer}")
         match last_answer:
             case Exists(repo):
@@ -137,6 +134,18 @@ class JupyterBookPubApp(Application):
         config=True,
     )
 
+    resolver_cache_ttl_seconds = Integer(
+        10 * 60,
+        help="How long to cache successful resolver results (in seconds)",
+        config=True,
+    )
+
+    resolver_cache_max_size = Integer(
+        128, help="Max number of successful resolver results to cache", config=True
+    )
+
+    resolver_cache = Instance(klass=TTLCache)
+
     @override
     def initialize(self, argv=None) -> None:
         super().initialize(argv)
@@ -152,6 +161,10 @@ class JupyterBookPubApp(Application):
 
         os.makedirs(self.built_sites_root, exist_ok=True)
         os.makedirs(self.repo_checkout_root, exist_ok=True)
+
+        self.resolver_cache = TTLCache(
+            maxsize=self.resolver_cache_max_size, ttl=10 * 60
+        )
 
     async def start(self) -> None:
         self.initialize()
