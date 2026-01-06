@@ -1,31 +1,16 @@
-# Welcome to jupyterbook.pub
+# Welcome to jupyterbook.pub (name tbd)
 
-|         |                                                                                                                                                                                                                                                              |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Package | [![Latest PyPI Version](https://img.shields.io/pypi/v/jupyterbook.pub.svg)](https://pypi.org/project/jupyterbook.pub/) [![Supported Python Versions](https://img.shields.io/pypi/pyversions/jupyterbook.pub.svg)](https://pypi.org/project/jupyterbook.pub/) |
-| Meta    | [![Code of Conduct](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)                                                                                                                                      |
+## Why?
 
-*TODO: the above badges that indicate python version and package version will only work if your package is on PyPI.
-If you don't plan to publish to PyPI, you can remove them.*
+When you are using JupyterBook, I think of three distinct activities (roughly speaking):
 
-jupyterbook.pub is a project that (describe what it does here).
+1. Authoring (you're writing your content, iterating on it)
+2. Publishing (your *source* content is pushed somewhere like GitHub, Zenodo, etc)
+3. Rendering (your *source* content is rendered into something more human readable, via GitHub Pages, Netlify, etc)
 
-## Get started
-
-You can install this package into your preferred Python environment using pip:
-
-```bash
-$ pip install jupyterbook.pub
-```
-
-TODO: Add a brief example of how to use the package to this section
-
-To use jupyterbook.pub in your code:
-
-```python
->>> import jupyterbook.pub
->>> jupyterbook.pub.hello_world()
-```
+(3) feels like *accidental complexity*, as it forces you to understand and deal with things that are not core to the
+process of writing. The goal of this project is to reduce this accidental complexity to 0 as much as possible, and
+then see what additional possible things can be built on top of this.
 
 ## Copyright
 

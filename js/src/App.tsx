@@ -7,7 +7,7 @@ export function App() {
       <div className='container'>
         <div className='mx-auto col-8'>
           <div className='text-center mt-4'>
-            <h1>JupyterBook.pub</h1>
+            <h1>JupyterBook.pub (name tbd)</h1>
             <h4>Instantly build and share your JupyterBook repository from GitHub or Dataverse</h4>
           </div>
           <LinkGenerator />
