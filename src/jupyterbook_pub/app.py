@@ -9,13 +9,15 @@ import os
 import shutil
 from pathlib import Path
 from typing import override
+import json
 
 import tornado
 from cachetools import TTLCache
 from jinja2 import Environment, FileSystemLoader
 from repoproviders import fetch, resolve
+from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
-from tornado.web import RequestHandler, StaticFileHandler, url
+from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
 from traitlets import Bool, Instance, Integer, Unicode
 from traitlets.config import Application
 
@@ -78,16 +80,9 @@ class RepoHandler(BaseHandler):
         spec = self.get_spec_from_request("/repo/")
 
         raw_repo_spec, _ = spec.split("/", 1)
-        if repo_spec in self.app.resolver_cache:
-            last_answer = self.app.resolver_cache[repo_spec]
-            self.log.debug(f"Found {repo_spec} in cache")
-        else:
-            answers = await resolve(repo_spec, True)
-            if not answers:
-                raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
-            last_answer = answers[-1]
-            self.app.resolver_cache[repo_spec] = last_answer
-            self.log.info(f"Resolved {repo_spec} to {last_answer}")
+        last_answer = await self.app.resolve(repo_spec)
+        if last_answer is None:
+            raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
             case Exists(repo):
                 repo_hash = hash_repo(repo)
@@ -119,6 +114,18 @@ class RepoHandler(BaseHandler):
                 raise tornado.web.HTTPError(404, f"{repo} could not be resolved")
 
 
+class ResolveHandler(BaseHandler):
+    async def get(self):
+        question = self.get_query_argument("q")
+        if not question:
+            raise HTTPError(400, "No question provided")
+        answer = await self.app.resolve(question)
+        if answer is None:
+            raise HTTPError(404, "Could not resolve {question}")
+
+        self.set_header("Content-Type", "application/json")
+        self.write(to_json(answer))
+
 class JupyterBookPubApp(Application):
     debug = Bool(True, help="Turn on debug mode", config=True)
 
@@ -146,6 +153,19 @@ class JupyterBookPubApp(Application):
 
     resolver_cache = Instance(klass=TTLCache)
 
+    async def resolve(self, question: str):
+        if question in self.resolver_cache:
+            last_answer = self.resolver_cache[question]
+            self.log.debug(f"Found {question} in cache")
+        else:
+            answers = await resolve(question, True)
+            if not answers:
+                return None
+            last_answer = answers[-1]
+            self.resolver_cache[question] = last_answer
+            self.log.info(f"Resolved {question} to {last_answer}")
+        return last_answer
+
     @override
     def initialize(self, argv=None) -> None:
         super().initialize(argv)
@@ -170,6 +190,7 @@ class JupyterBookPubApp(Application):
         self.initialize()
         self.web_app = tornado.web.Application(
             [
+                url(r"/api/v1/resolve", ResolveHandler, {"app": self}, name="resolve-api"),
                 url(r"/repo/(.*?)/(.*)", RepoHandler, {"app": self}, name="repo"),
                 (
                     "/(.*)",
