@@ -5,7 +5,7 @@
   "source": "src/index.html",
   "scripts": {
     "dev:watch": "parcel src/index.html --dist-dir ../src/jupyterbook_pub/generated_static",
-    "build": "parcel build"
+    "build": "parcel build --dist-dir ../src/jupyterbook_pub/generated_static"
   },
   "dependencies": {
     "bootstrap": "^5.3.8",

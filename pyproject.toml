@@ -85,6 +85,9 @@ only-packages = true
 # Read more about src layouts here: https://www.pyopensci.org/python-package-guide/package-structure-code/python-package-structure.html
 [tool.hatch.build.targets.wheel]
 packages = ["src/jupyterbook_pub"]
+artifacts = [
+  "src/jupyterbook_pub/generated_static"
+]
 
 
 [tool.hatch.build.hooks.vcs]
