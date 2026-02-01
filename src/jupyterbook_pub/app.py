@@ -18,7 +18,7 @@ from repoproviders import fetch, resolve
 from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
 from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
-from traitlets import Bool, Instance, Integer, Unicode
+from traitlets import Bool, Instance, Int, Integer, Unicode
 from traitlets.config import Application
 
 
@@ -129,6 +129,11 @@ class ResolveHandler(BaseHandler):
 class JupyterBookPubApp(Application):
     debug = Bool(True, help="Turn on debug mode", config=True)
 
+    port = Int(
+        int(os.environ.get("PORT", "9200")),
+        help="Port to listen on",
+        config=True
+    )
     repo_checkout_root = Unicode(
         str(Path(__file__).parent.parent.parent / "repos"),
         help="Path to check out repos to. Created if it doesn't exist",
@@ -203,7 +208,7 @@ class JupyterBookPubApp(Application):
             ],
             debug=self.debug,
         )
-        self.web_app.listen(9200)
+        self.web_app.listen(self.port)
         await asyncio.Event().wait()
 
 
