@@ -12,4 +12,5 @@ RUN cd js && \
     npm run build
 RUN python3 -m pip install /opt/jupyterbook.pub
 
+# Overriden for dokku
 CMD ["python3", "-m", "jupyterbook_pub.app"]
