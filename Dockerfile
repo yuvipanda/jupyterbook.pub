@@ -11,3 +11,5 @@ RUN cd js && \
     npm install && \
     npm run build
 RUN python3 -m pip install /opt/jupyterbook.pub
+
+CMD ["python3", "-m", "jupyterbook_pub.app"]
