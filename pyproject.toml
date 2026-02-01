@@ -38,7 +38,8 @@ dependencies = [
     "repoproviders>=0.1.4",
     "jinja2",
     "cachetools",
-    "traitlets"
+    "traitlets",
+    "jupyter-book>=2.0"
 ]
 
 [project.urls]
