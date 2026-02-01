@@ -5,4 +5,4 @@ set -euo pipefail
 exec python3 -m jupyterbook_pub.app \
     --JupyterBookPubApp.port=${PORT} \
     --JupyterBookPubApp.built_sites_root=/opt/persistent/sites \
-    --JupyterBookPubApp.built_checkout_root=/opt/persistent/repos
+    --JupyterBookPubApp.repo_checkout_root=/opt/persistent/repos
