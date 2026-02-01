@@ -67,7 +67,7 @@ export function LinkGenerator() {
                             }
                         }}></input>
                         <label htmlFor="repoUrl">
-                            {(resolvedRepo === null || resolvedRepo.certainity !== "Exists") ? <span>Enter your repository URL here</span> : <>
+                            {(resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist") ? <span>Enter your repository URL here</span> : <>
 
                                 <span className="badge text-bg-secondary">{resolvedRepo.kind}</span>
                                 {Object.entries(resolvedRepo.data).map(([key, value]) =>
@@ -78,7 +78,7 @@ export function LinkGenerator() {
                             }
                         </label>
                     </div>
-                    <button className="btn btn-primary" type="button" onClick={() => window.location.href = shareUrl.toString()} disabled={resolvedRepo === null || resolvedRepo.certainity !== "Exists"}>Go!</button>
+                    <button className="btn btn-primary" type="button" onClick={() => window.location.href = shareUrl.toString()} disabled={resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist"}>Go!</button>
                 </div>
                 <div className="m-3 input-group">
                     <div className="form-floating">

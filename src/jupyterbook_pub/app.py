@@ -83,7 +83,7 @@ class RepoHandler(BaseHandler):
         if last_answer is None:
             raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
-            case Exists(repo):
+            case Exists(repo) | MaybeExists(repo):
                 repo_hash = hash_repo(repo)
                 built_path = Path(self.app.built_sites_root) / repo_hash
                 if not built_path.exists():
@@ -107,8 +107,6 @@ class RepoHandler(BaseHandler):
                         if not chunk:
                             break
                         self.write(chunk)
-            case MaybeExists(repo):
-                pass
             case DoesNotExist(repo):
                 raise tornado.web.HTTPError(404, f"{repo} could not be resolved")
 
