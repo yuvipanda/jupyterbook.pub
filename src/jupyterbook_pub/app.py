@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import asyncio
 import dataclasses
 import hashlib
@@ -26,6 +27,16 @@ def hash_repo(repo: Repo) -> str:
         f"{repo.__class__.__name__}:{dataclasses.asdict(repo)}".encode()
     ).hexdigest()
 
+def random_port():
+    """
+    Get a single random port likely to be available for listening in.
+    """
+    sock = socket.socket()
+    sock.bind(('', 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
 
 async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
     repo_hash = hash_repo(repo)
@@ -39,7 +50,9 @@ async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
             await fetch(repo, repo_path)
             yield f"Fetched {repo}"
 
-        command = ["jupyter", "book", "build", "--html"]
+        # Explicitly pass in a random port, as otherwise jupyter-book will always
+        # try to listen on port 5000 and hang forever if it can't.
+        command = ["jupyter", "book", "build", "--html", "--port", str(random_port())]
         proc = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
