@@ -9,7 +9,6 @@ import os
 import shutil
 from pathlib import Path
 from typing import override
-import json
 
 import tornado
 from cachetools import TTLCache
@@ -126,13 +125,12 @@ class ResolveHandler(BaseHandler):
         self.set_header("Content-Type", "application/json")
         self.write(to_json(answer))
 
+
 class JupyterBookPubApp(Application):
     debug = Bool(True, help="Turn on debug mode", config=True)
 
     port = Int(
-        int(os.environ.get("PORT", "9200")),
-        help="Port to listen on",
-        config=True
+        int(os.environ.get("PORT", "9200")), help="Port to listen on", config=True
     )
     repo_checkout_root = Unicode(
         str(Path(__file__).parent.parent.parent / "repos"),
@@ -195,7 +193,12 @@ class JupyterBookPubApp(Application):
         self.initialize()
         self.web_app = tornado.web.Application(
             [
-                url(r"/api/v1/resolve", ResolveHandler, {"app": self}, name="resolve-api"),
+                url(
+                    r"/api/v1/resolve",
+                    ResolveHandler,
+                    {"app": self},
+                    name="resolve-api",
+                ),
                 url(r"/repo/(.*?)/(.*)", RepoHandler, {"app": self}, name="repo"),
                 (
                     "/(.*)",
