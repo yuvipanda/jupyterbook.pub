@@ -35,7 +35,7 @@ keywords = []
 # TODO: add dependencies
 dependencies = [
     "tornado",
-    "repoproviders",
+    "repoproviders>=0.1.4",
     "jinja2",
     "cachetools",
     "traitlets"
