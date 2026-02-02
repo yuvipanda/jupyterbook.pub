@@ -9,7 +9,7 @@ import mimetypes
 import os
 import shutil
 from pathlib import Path
-from typing import override
+from typing import Optional, override
 
 import tornado
 from cachetools import TTLCache
@@ -38,6 +38,14 @@ def random_port():
     return port
 
 
+def find_jb_root(repo_path: Path) -> Optional[Path]:
+    for dirname, _, filenames in repo_path.walk():
+        if "myst.yml" in filenames:
+            return dirname
+
+    return None
+
+
 async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
     repo_hash = hash_repo(repo)
     repo_path = Path(app.repo_checkout_root) / repo_hash
@@ -50,6 +58,10 @@ async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
             await fetch(repo, repo_path)
             yield f"Fetched {repo}"
 
+        jb_root = find_jb_root(repo_path)
+        if not jb_root:
+            # FIXME: Better errors plz
+            raise ValueError("No myst.yml found in repo")
         # Explicitly pass in a random port, as otherwise jupyter-book will always
         # try to listen on port 5000 and hang forever if it can't.
         command = ["jupyter", "book", "build", "--html", "--port", str(random_port())]
@@ -57,7 +69,7 @@ async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
             *command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=repo_path,
+            cwd=jb_root,
             env=env,
         )
 
@@ -67,7 +79,7 @@ async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
         yield stdout
         yield stderr
 
-        shutil.copytree(repo_path / "_build/html", built_path)
+        shutil.copytree(jb_root / "_build/html", built_path)
 
 
 class BaseHandler(RequestHandler):
