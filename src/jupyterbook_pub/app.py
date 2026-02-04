@@ -21,11 +21,8 @@ from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
 from traitlets import Bool, Instance, Int, Integer, Unicode
 from traitlets.config import Application
 
+from .cache import make_rendered_cache_key, make_checkout_cache_key
 
-def hash_repo(repo: Repo) -> str:
-    return hashlib.sha256(
-        f"{repo.__class__.__name__}:{dataclasses.asdict(repo)}".encode()
-    ).hexdigest()
 
 def random_port():
     """
@@ -47,9 +44,8 @@ def find_jb_root(repo_path: Path) -> Optional[Path]:
 
 
 async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
-    repo_hash = hash_repo(repo)
-    repo_path = Path(app.repo_checkout_root) / repo_hash
-    built_path = Path(app.built_sites_root) / repo_hash
+    repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
+    built_path = Path(app.built_sites_root) / make_rendered_cache_key(repo, base_url)
     env = os.environ.copy()
     env["BASE_URL"] = base_url
     if not built_path.exists():
@@ -109,10 +105,11 @@ class RepoHandler(BaseHandler):
             raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
             case Exists(repo) | MaybeExists(repo):
-                repo_hash = hash_repo(repo)
-                built_path = Path(self.app.built_sites_root) / repo_hash
+                # Construct a *full* URL as base_url, as we can support different *domains*
+                # Including different base urls in the future
+                base_url = f"{self.request.protocol}://{self.request.host}/repo/{raw_repo_spec}"
+                built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(repo, base_url)
                 if not built_path.exists():
-                    base_url = f"/repo/{raw_repo_spec}"
                     async for line in render_if_needed(self.app, repo, base_url):
                         self.write(line)
                 # This is a *sure* path traversal attack
