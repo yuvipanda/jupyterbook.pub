@@ -8,6 +8,7 @@ import logging
 import mimetypes
 import os
 import shutil
+from ruamel.yaml import YAML
 from pathlib import Path
 import sys
 from typing import Optional, override
@@ -24,6 +25,8 @@ from traitlets.config import Application
 
 from .cache import make_rendered_cache_key, make_checkout_cache_key
 
+# We don't have to roundtrip here, because nobody reads that YAML
+yaml = YAML(typ='safe')
 
 def random_port():
     """
@@ -34,6 +37,18 @@ def random_port():
     port = sock.getsockname()[1]
     sock.close()
     return port
+
+
+def munge_jb_myst_yml(myst_yml_path: Path):
+    # If there's only one entry in toc, use article not book theme
+    with open(myst_yml_path, "r") as f:
+        data = yaml.load(f)
+
+    if len(data['project']['toc']) == 1:
+        data['site']['template'] = 'article-theme'
+
+    with open(myst_yml_path, "w") as f:
+        yaml.dump(data, f)
 
 
 async def ensure_jb_root(repo_path: Path) -> Optional[Path]:
@@ -54,6 +69,8 @@ async def ensure_jb_root(repo_path: Path) -> Optional[Path]:
     if retcode != 0:
         print(stdout, file=sys.stderr)
         print(stderr, file=sys.stderr)
+    else:
+        munge_jb_myst_yml(repo_path / 'myst.yml')
 
     return repo_path
 

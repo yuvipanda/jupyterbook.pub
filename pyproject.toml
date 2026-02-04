@@ -39,7 +39,8 @@ dependencies = [
     "jinja2",
     "cachetools",
     "traitlets",
-    "jupyter-book>=2.0"
+    "jupyter-book>=2.0",
+    "ruamel.yaml"
 ]
 
 [project.urls]
