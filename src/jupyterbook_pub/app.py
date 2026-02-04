@@ -137,9 +137,9 @@ class RepoHandler(BaseHandler):
             raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
             case Exists(repo) | MaybeExists(repo):
-                # Construct a *full* URL as base_url, as we can support different *domains*
-                # Including different base urls in the future
-                base_url = f"{self.request.protocol}://{self.request.host}/repo/{raw_repo_spec}"
+                # In the future, we can explicitly specify full URL here so we
+                # can support other kinds of domains too
+                base_url = f"/repo/{raw_repo_spec}"
                 built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(repo, base_url)
                 if not built_path.exists():
                     async for line in render_if_needed(self.app, repo, base_url):
