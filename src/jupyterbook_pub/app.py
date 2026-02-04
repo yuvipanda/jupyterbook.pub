@@ -9,6 +9,7 @@ import mimetypes
 import os
 import shutil
 from pathlib import Path
+import sys
 from typing import Optional, override
 
 import tornado
@@ -35,12 +36,26 @@ def random_port():
     return port
 
 
-def find_jb_root(repo_path: Path) -> Optional[Path]:
+async def ensure_jb_root(repo_path: Path) -> Optional[Path]:
     for dirname, _, filenames in repo_path.walk():
         if "myst.yml" in filenames:
             return dirname
 
-    return None
+    # No `myst.yml` found. Let's make one
+    command = ["jupyter", "book", "init", "--write-toc"]
+    proc = await asyncio.create_subprocess_exec(
+        *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        cwd=repo_path
+    )
+
+    stdout, stderr = [s.decode() for s in await proc.communicate()]
+    retcode = await proc.wait()
+
+    if retcode != 0:
+        print(stdout, file=sys.stderr)
+        print(stderr, file=sys.stderr)
+
+    return repo_path
 
 
 async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
@@ -54,7 +69,7 @@ async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
             await fetch(repo, repo_path)
             yield f"Fetched {repo}"
 
-        jb_root = find_jb_root(repo_path)
+        jb_root = await ensure_jb_root(repo_path)
         if not jb_root:
             # FIXME: Better errors plz
             raise ValueError("No myst.yml found in repo")
