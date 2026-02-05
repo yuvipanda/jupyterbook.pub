@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import socket
 import asyncio
-import dataclasses
-import hashlib
 import logging
 import mimetypes
 import os
 import shutil
-from ruamel.yaml import YAML
-from pathlib import Path
+import socket
 import sys
+from pathlib import Path
 from typing import Optional, override
 
 import tornado
@@ -19,21 +16,23 @@ from jinja2 import Environment, FileSystemLoader
 from repoproviders import fetch, resolve
 from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
+from ruamel.yaml import YAML
 from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
 from traitlets import Bool, Instance, Int, Integer, Unicode
 from traitlets.config import Application
 
-from .cache import make_rendered_cache_key, make_checkout_cache_key
+from .cache import make_checkout_cache_key, make_rendered_cache_key
 
 # We don't have to roundtrip here, because nobody reads that YAML
-yaml = YAML(typ='safe')
+yaml = YAML(typ="safe")
+
 
 def random_port():
     """
     Get a single random port likely to be available for listening in.
     """
     sock = socket.socket()
-    sock.bind(('', 0))
+    sock.bind(("", 0))
     port = sock.getsockname()[1]
     sock.close()
     return port
@@ -44,8 +43,8 @@ def munge_jb_myst_yml(myst_yml_path: Path):
     with open(myst_yml_path, "r") as f:
         data = yaml.load(f)
 
-    if len(data['project']['toc']) == 1:
-        data['site']['template'] = 'article-theme'
+    if len(data["project"]["toc"]) == 1:
+        data["site"]["template"] = "article-theme"
 
     with open(myst_yml_path, "w") as f:
         yaml.dump(data, f)
@@ -59,8 +58,10 @@ async def ensure_jb_root(repo_path: Path) -> Optional[Path]:
     # No `myst.yml` found. Let's make one
     command = ["jupyter", "book", "init", "--write-toc"]
     proc = await asyncio.create_subprocess_exec(
-        *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        cwd=repo_path
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=repo_path,
     )
 
     stdout, stderr = [s.decode() for s in await proc.communicate()]
@@ -70,7 +71,7 @@ async def ensure_jb_root(repo_path: Path) -> Optional[Path]:
         print(stdout, file=sys.stderr)
         print(stderr, file=sys.stderr)
     else:
-        munge_jb_myst_yml(repo_path / 'myst.yml')
+        munge_jb_myst_yml(repo_path / "myst.yml")
 
     return repo_path
 
@@ -140,7 +141,9 @@ class RepoHandler(BaseHandler):
                 # In the future, we can explicitly specify full URL here so we
                 # can support other kinds of domains too
                 base_url = f"/repo/{raw_repo_spec}"
-                built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(repo, base_url)
+                built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(
+                    repo, base_url
+                )
                 if not built_path.exists():
                     async for line in render_if_needed(self.app, repo, base_url):
                         self.write(line)
