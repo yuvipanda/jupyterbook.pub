@@ -146,7 +146,7 @@ class RepoHandler(BaseHandler):
                 )
                 if not built_path.exists():
                     async for line in render_if_needed(self.app, repo, base_url):
-                        self.write(line)
+                        print(line)
                 # This is a *sure* path traversal attack
                 full_path = built_path / path
                 if full_path.is_dir():
