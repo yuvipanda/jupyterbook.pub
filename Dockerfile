@@ -1,6 +1,9 @@
 FROM python:3.14-trixie
 
-RUN apt update >/dev/null && apt install --yes nodejs npm rclone >/dev/null
+RUN apt update >/dev/null && apt install --yes nodejs npm >/dev/null
+
+# Install a new enough version of rclone
+RUN curl https://rclone.org/install.sh |  bash
 
 RUN mkdir -p /opt/jupyterbook.pub
 WORKDIR /opt/jupyterbook.pub
