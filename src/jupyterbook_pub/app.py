@@ -10,15 +10,18 @@ import sys
 from pathlib import Path
 from typing import Optional, override
 
+import aiodns
 import tornado
 from cachetools import TTLCache
 from jinja2 import Environment, FileSystemLoader
+from pycares import TXTRecordData
 from repoproviders import fetch, resolve
 from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
 from ruamel.yaml import YAML
+from tornado.routing import HostMatches
 from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
-from traitlets import Bool, Instance, Int, Integer, Unicode
+from traitlets import Bool, Instance, Int, Integer, List, Unicode
 from traitlets.config import Application
 
 from .cache import make_checkout_cache_key, make_rendered_cache_key
@@ -117,7 +120,21 @@ class BaseHandler(RequestHandler):
         self.log = app.log
 
 
+def repo_from_txt_record(txt_record: str) -> Optional[str]:
+    # Strip "" if it exists
+    r = txt_record.strip("")
+    # Split based on whitespace
+    parts = r.split()
+    # Split based on equal signs
+    # FIXME: How do we handle values with equals signs in them? idk
+    data = dict(p.split("=", 2) for p in parts)
+    return data.get("repo")
+
+
 class RepoHandler(BaseHandler):
+    def initialize(self, app: JupyterBookPubApp, primary_domain: bool):
+        self.primary_domain = primary_domain
+        return super().initialize(app)
 
     def get_spec_from_request(self, prefix):
         """
@@ -129,18 +146,44 @@ class RepoHandler(BaseHandler):
         spec = self.request.path[idx + len(prefix) :]
         return spec
 
-    async def get(self, repo_spec: str, path: str):
-        spec = self.get_spec_from_request("/repo/")
+    async def get(self, repo_spec_or_path: str, path: Optional[str] = None):
+        if self.primary_domain:
+            repo_spec = repo_spec_or_path
+            spec = self.get_spec_from_request("/repo/")
+            raw_repo_spec, _ = spec.split("/", 1)
+            base_url = f"/repo/{raw_repo_spec}"
+            assert (
+                path is not None
+            )  # Should not happen, because our routing prevents it
+        else:
+            path = repo_spec_or_path
+            base_url = ""
+            resolver = aiodns.DNSResolver()
+            try:
+                result = await resolver.query_dns(self.request.host_name, "TXT")
+            except aiodns.error.DNSError:
+                raise HTTPError(
+                    404, f"No repo found to render for domain {self.request.host_name}"
+                )
+            if len(result.answer) == 0:
+                raise HTTPError(
+                    404, f"No repo found to render for domain {self.request.host_name}"
+                )
+            for answer in result.answer:
+                if isinstance(answer.data, TXTRecordData):
+                    repo_spec = repo_from_txt_record(answer.data.data.decode())
+                    if repo_spec:
+                        break
+            else:
+                raise HTTPError(
+                    404, f"No repo found to render for domain {self.request.host_name}"
+                )
 
-        raw_repo_spec, _ = spec.split("/", 1)
         last_answer = await self.app.resolve(repo_spec)
         if last_answer is None:
             raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
             case Exists(repo) | MaybeExists(repo):
-                # In the future, we can explicitly specify full URL here so we
-                # can support other kinds of domains too
-                base_url = f"/repo/{raw_repo_spec}"
                 built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(
                     repo, base_url
                 )
@@ -209,6 +252,12 @@ class JupyterBookPubApp(Application):
         128, help="Max number of successful resolver results to cache", config=True
     )
 
+    primary_domains = List(
+        Unicode(),
+        ["127.0.0.1", "localhost", "jupyterbook.pub"],
+        help="Primary domains to serve. All other domains will trigger TXT lookups",
+    )
+
     resolver_cache = Instance(klass=TTLCache)
 
     async def resolve(self, question: str):
@@ -246,24 +295,42 @@ class JupyterBookPubApp(Application):
 
     async def start(self) -> None:
         self.initialize()
+        # Primary host handlers
+        primary_hosts_handlers = [
+            (
+                HostMatches(h),
+                [
+                    url(
+                        r"/api/v1/resolve",
+                        ResolveHandler,
+                        {"app": self},
+                        name="resolve-api",
+                    ),
+                    url(
+                        r"/repo/(.*?)/(.*)",
+                        RepoHandler,
+                        {"app": self, "primary_domain": True},
+                        name="repo",
+                    ),
+                    url(
+                        "/(.*)",
+                        StaticFileHandler,
+                        {
+                            "path": str(Path(__file__).parent / "generated_static"),
+                            "default_filename": "index.html",
+                        },
+                    ),
+                ],
+            )
+            for h in self.primary_domains
+        ]
+
+        # Serve every other host
+        other_hosts_handlers = [
+            url(r"/(.*)", RepoHandler, {"app": self, "primary_domain": False}),
+        ]
         self.web_app = tornado.web.Application(
-            [
-                url(
-                    r"/api/v1/resolve",
-                    ResolveHandler,
-                    {"app": self},
-                    name="resolve-api",
-                ),
-                url(r"/repo/(.*?)/(.*)", RepoHandler, {"app": self}, name="repo"),
-                (
-                    "/(.*)",
-                    StaticFileHandler,
-                    {
-                        "path": str(Path(__file__).parent / "generated_static"),
-                        "default_filename": "index.html",
-                    },
-                ),
-            ],
+            primary_hosts_handlers + other_hosts_handlers,
             debug=self.debug,
         )
         self.web_app.listen(self.port)
