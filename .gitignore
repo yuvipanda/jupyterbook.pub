@@ -246,3 +246,7 @@ _version.py
 
 # Generated static assets
 src/jupyterbook_pub/generated_static
+# Local files
+built/
+built_sites/
+repos/
