@@ -54,31 +54,34 @@ export function LinkGenerator() {
     return (
         <div className="row bg-body-tertiary mt-4">
             <form className="p-4">
-                <div className="m-3 input-group">
-                    <div className="form-floating">
-                        <input type="input" className="form-control" id="repo-url" placeholder="Enter your repository URL here" onChange={e => {
-                            const rawRepoUrl = e.target.value;
-                            const normalizedRepoUrl = normalizeRepoUrl(rawRepoUrl);
-                            setRepoUrl(normalizedRepoUrl);
-                            if (normalizedRepoUrl === null) {
-                                setShareUrl(null);
-                            } else {
-                                setShareUrl(makeShareableLink(normalizedRepoUrl));
-                            }
-                        }}></input>
-                        <label htmlFor="repoUrl">
-                            {(resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist") ? <span>Enter your repository URL here</span> : <>
+                <div className="m-3 col-12">
+                    <div className="input-group">
+                        <div className="form-floating">
+                            <input type="input" className="form-control" id="repo-url" placeholder="Enter your repository URL here" onChange={e => {
+                                const rawRepoUrl = e.target.value;
+                                const normalizedRepoUrl = normalizeRepoUrl(rawRepoUrl);
+                                setRepoUrl(normalizedRepoUrl);
+                                if (normalizedRepoUrl === null) {
+                                    setShareUrl(null);
+                                } else {
+                                    setShareUrl(makeShareableLink(normalizedRepoUrl));
+                                }
+                            }}></input>
+                            <label htmlFor="repoUrl">
+                                {(resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist") ? <span>Enter your repository URL here</span> : <>
 
-                                <span className="badge text-bg-secondary">{resolvedRepo.kind}</span>
-                                {Object.entries(resolvedRepo.data).map(([key, value]) =>
-                                    <span className="mx-1" key={key}>
-                                        <code title={key}>{value}</code></span>
-                                )}
-                            </>
-                            }
-                        </label>
+                                    <span className="badge text-bg-secondary">{resolvedRepo.kind}</span>
+                                    {Object.entries(resolvedRepo.data).map(([key, value]) =>
+                                        <span className="mx-1" key={key}>
+                                            <code title={key}>{value}</code></span>
+                                    )}
+                                </>
+                                }
+                            </label>
+                        </div>
+                        <button className="btn btn-primary" type="button" onClick={() => window.location.href = shareUrl.toString()} disabled={resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist"}>Go!</button>
                     </div>
-                    <button className="btn btn-primary" type="button" onClick={() => window.location.href = shareUrl.toString()} disabled={resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist"}>Go!</button>
+                    <small>Supports GitHub (Repos, Refs & PRs), Public Google Drive Folders, DOIs, Zenodo, Dataverse, <a href="https://github.com/yuvipanda/repoproviders?tab=readme-ov-file#supported-repositories">and many others</a></small>
                 </div>
                 <div className="m-3 input-group">
                     <div className="form-floating">
