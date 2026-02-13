@@ -81,7 +81,7 @@ export function LinkGenerator() {
                         </div>
                         <button className="btn btn-primary" type="button" onClick={() => window.location.href = shareUrl.toString()} disabled={resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist"}>Go!</button>
                     </div>
-                    <small>Supports GitHub (Repos, <abbr title="Branches, Commits & Tags">Refs</abbr>, Action Artifacts & PRs), Public Google Drive Folders, <abbr title="On Zenodo & Dataverse">DOIs</abbr>, <a href="https://github.com/yuvipanda/repoproviders?tab=readme-ov-file#supported-repositories">and many others</a></small>
+                    <small>Supports GitHub (Repos, <abbr title="Branches, Commits & Tags">Refs</abbr>, Action Artifacts & PRs), Public Google Drive Folders, <abbr title="From Zenodo, Figshare & Dataverse">DOIs</abbr>, <a href="https://github.com/yuvipanda/repoproviders?tab=readme-ov-file#supported-repositories">and many others</a></small>
                 </div>
                 <div className="m-3 input-group">
                     <div className="form-floating">
