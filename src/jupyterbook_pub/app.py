@@ -88,25 +88,35 @@ async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
             yield f"Fetched {repo}"
 
         jb_root = await ensure_jb_root(repo_path)
+
         if not jb_root:
             # FIXME: Better errors plz
             raise ValueError("No myst.yml found in repo")
-        # Explicitly pass in a random port, as otherwise jupyter-book will always
-        # try to listen on port 5000 and hang forever if it can't.
-        command = ["jupyter", "book", "build", "--html", "--port", str(random_port())]
-        proc = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=jb_root,
-            env=env,
-        )
 
-        stdout, stderr = [s.decode() for s in await proc.communicate()]
-        retcode = await proc.wait()
+        built_html_path = jb_root / "_build/html"
 
-        yield stdout
-        yield stderr
+        # If we have been given built HTML files, just use those.
+        # This allows for repos that execute notebooks and render them as HTML,
+        # and we just serve them. We check for index.json as a simple way to not
+        # turn into a random arbitrary HTML server. We also eventually want to be
+        # able to offer `--execute` but *only* when cached execution is present
+        if not (built_html_path.exists() and (built_html_path / "index.json").exists()):
+            # Explicitly pass in a random port, as otherwise jupyter-book will always
+            # try to listen on port 5000 and hang forever if it can't.
+            command = ["jupyter", "book", "build", "--html", "--port", str(random_port())]
+            proc = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=jb_root,
+                env=env,
+            )
+
+            stdout, stderr = [s.decode() for s in await proc.communicate()]
+            retcode = await proc.wait()
+
+            yield stdout
+            yield stderr
 
         shutil.copytree(jb_root / "_build/html", built_path)
 
