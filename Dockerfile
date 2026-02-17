@@ -5,6 +5,9 @@ RUN apt update >/dev/null && apt install --yes nodejs npm >/dev/null
 # Install a new enough version of rclone
 RUN curl https://rclone.org/install.sh |  bash
 
+# Install micromamba for use by the jupyterlite builder
+RUN curl -L https://micro.mamba.pm/install.sh | bash
+
 RUN mkdir -p /opt/jupyterbook.pub
 WORKDIR /opt/jupyterbook.pub
 
