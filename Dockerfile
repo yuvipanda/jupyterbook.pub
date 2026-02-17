@@ -7,6 +7,8 @@ RUN curl https://rclone.org/install.sh |  bash
 
 # Install micromamba for use by the jupyterlite builder
 RUN curl -L https://micro.mamba.pm/install.sh | bash
+# Make sure we can find micromamba
+ENV PATH=/root/.local/bin:${PATH}
 
 RUN mkdir -p /opt/jupyterbook.pub
 WORKDIR /opt/jupyterbook.pub
