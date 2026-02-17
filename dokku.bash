@@ -2,7 +2,7 @@
 set -euo pipefail
 # Dokku entrypoint, to make life easier
 
-CONFIG_FILE="deploy_config/{$CONFIG_FILE:-jupyterbook.py}"
+CONFIG_FILE="deploy_config/${CONFIG_FILE:-jupyterbook.py}"
 
 exec python3 -m jupyterbook_pub.app \
     --JupyterBookPubApp.debug=true \
