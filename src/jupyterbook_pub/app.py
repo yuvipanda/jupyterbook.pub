@@ -4,121 +4,23 @@ import asyncio
 import logging
 import mimetypes
 import os
-import shutil
-import socket
-import sys
 from pathlib import Path
-from typing import Optional, override
+from typing import override
 
 import tornado
 from cachetools import TTLCache
 from jinja2 import Environment, FileSystemLoader
-from repoproviders import fetch, resolve
+from repoproviders import resolve
+from repoproviders.fetchers.fetcher import fetch
 from repoproviders.resolvers import to_json
-from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists, Repo
-from ruamel.yaml import YAML
+from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists
 from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
 from traitlets import Bool, Instance, Int, Integer, Unicode
 from traitlets.config import Application
 
+from jupyterbook_pub.builder import JupyterBook2Builder
+
 from .cache import make_checkout_cache_key, make_rendered_cache_key
-
-# We don't have to roundtrip here, because nobody reads that YAML
-yaml = YAML(typ="safe")
-
-
-def random_port():
-    """
-    Get a single random port likely to be available for listening in.
-    """
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
-def munge_jb_myst_yml(myst_yml_path: Path):
-    # If there's only one entry in toc, use article not book theme
-    with open(myst_yml_path, "r") as f:
-        data = yaml.load(f)
-
-    if len(data["project"]["toc"]) == 1:
-        data["site"]["template"] = "article-theme"
-
-    with open(myst_yml_path, "w") as f:
-        yaml.dump(data, f)
-
-
-async def ensure_jb_root(repo_path: Path) -> Optional[Path]:
-    for dirname, _, filenames in repo_path.walk():
-        if "myst.yml" in filenames:
-            return dirname
-
-    # No `myst.yml` found. Let's make one
-    command = ["jupyter", "book", "init", "--write-toc"]
-    proc = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=repo_path,
-    )
-
-    stdout, stderr = [s.decode() for s in await proc.communicate()]
-    retcode = await proc.wait()
-
-    if retcode != 0:
-        print(stdout, file=sys.stderr)
-        print(stderr, file=sys.stderr)
-    else:
-        munge_jb_myst_yml(repo_path / "myst.yml")
-
-    return repo_path
-
-
-async def render_if_needed(app: JupyterBookPubApp, repo: Repo, base_url: str):
-    repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
-    built_path = Path(app.built_sites_root) / make_rendered_cache_key(repo, base_url)
-    env = os.environ.copy()
-    env["BASE_URL"] = base_url
-    if not built_path.exists():
-        if not repo_path.exists():
-            yield f"Fetching {repo}...\n"
-            await fetch(repo, repo_path)
-            yield f"Fetched {repo}"
-
-        jb_root = await ensure_jb_root(repo_path)
-
-        if not jb_root:
-            # FIXME: Better errors plz
-            raise ValueError("No myst.yml found in repo")
-
-        built_html_path = jb_root / "_build/html"
-
-        # If we have been given built HTML files, just use those.
-        # This allows for repos that execute notebooks and render them as HTML,
-        # and we just serve them. We check for index.json as a simple way to not
-        # turn into a random arbitrary HTML server. We also eventually want to be
-        # able to offer `--execute` but *only* when cached execution is present
-        if not (built_html_path.exists() and (built_html_path / "index.json").exists()):
-            # Explicitly pass in a random port, as otherwise jupyter-book will always
-            # try to listen on port 5000 and hang forever if it can't.
-            command = ["jupyter", "book", "build", "--html", "--port", str(random_port())]
-            proc = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=jb_root,
-                env=env,
-            )
-
-            stdout, stderr = [s.decode() for s in await proc.communicate()]
-            retcode = await proc.wait()
-
-            yield stdout
-            yield stderr
-
-        shutil.copytree(jb_root / "_build/html", built_path)
 
 
 class BaseHandler(RequestHandler):
@@ -154,8 +56,18 @@ class RepoHandler(BaseHandler):
                 built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(
                     repo, base_url
                 )
+
+                repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
+
+                if not repo_path.exists():
+                    print(f"Fetching {repo}...\n")
+                    await fetch(repo, repo_path)
+                    print(f"Fetched {repo}")
+
                 if not built_path.exists():
-                    async for line in render_if_needed(self.app, repo, base_url):
+                    async for line in self.app.builder.render(
+                        repo_path, built_path, base_url
+                    ):
                         print(line)
                 # This is a *sure* path traversal attack
                 full_path = built_path / path
@@ -221,6 +133,8 @@ class JupyterBookPubApp(Application):
 
     resolver_cache = Instance(klass=TTLCache)
 
+    builder = Instance(klass=JupyterBook2Builder)
+
     async def resolve(self, question: str):
         if question in self.resolver_cache:
             last_answer = self.resolver_cache[question]
@@ -253,6 +167,8 @@ class JupyterBookPubApp(Application):
         self.resolver_cache = TTLCache(
             maxsize=self.resolver_cache_max_size, ttl=10 * 60
         )
+
+        self.builder = JupyterBook2Builder(parents=self)
 
     async def start(self) -> None:
         self.initialize()
