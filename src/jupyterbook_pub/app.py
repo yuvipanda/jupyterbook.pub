@@ -18,8 +18,8 @@ from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
 from traitlets import Bool, Instance, Int, Integer, Unicode
 from traitlets.config import Application
 
-from jupyterbook_pub.builder import JupyterBook2Builder
-
+from .builder.base import Renderer
+from .builder.book import JupyterBook2Builder
 from .cache import make_checkout_cache_key, make_rendered_cache_key
 
 
@@ -65,10 +65,7 @@ class RepoHandler(BaseHandler):
                     print(f"Fetched {repo}")
 
                 if not built_path.exists():
-                    async for line in self.app.builder.render(
-                        repo_path, built_path, base_url
-                    ):
-                        print(line)
+                    await self.app.renderer.render(repo_path, built_path, base_url)
                 # This is a *sure* path traversal attack
                 full_path = built_path / path
                 if full_path.is_dir():
@@ -133,7 +130,7 @@ class JupyterBookPubApp(Application):
 
     resolver_cache = Instance(klass=TTLCache)
 
-    builder = Instance(klass=JupyterBook2Builder)
+    renderer = Instance(klass=Renderer)
 
     async def resolve(self, question: str):
         if question in self.resolver_cache:
@@ -168,7 +165,7 @@ class JupyterBookPubApp(Application):
             maxsize=self.resolver_cache_max_size, ttl=10 * 60
         )
 
-        self.builder = JupyterBook2Builder(parents=self)
+        self.renderer = JupyterBook2Builder(parents=self)
 
     async def start(self) -> None:
         self.initialize()

@@ -6,15 +6,15 @@ from pathlib import Path
 from typing import Optional
 
 from ruamel.yaml import YAML
-from traitlets.config import LoggingConfigurable
 
-from .utils import random_port
+from ..utils import random_port
+from .base import Renderer
 
 # We don't have to roundtrip here, because nobody reads that YAML
 yaml = YAML(typ="safe")
 
 
-class JupyterBook2Builder(LoggingConfigurable):
+class JupyterBook2Builder(Renderer):
     def munge_jb_myst_yml(self, myst_yml_path: Path):
         # If there's only one entry in toc, use article not book theme
         with open(myst_yml_path, "r") as f:
@@ -90,7 +90,7 @@ class JupyterBook2Builder(LoggingConfigurable):
             stdout, stderr = [s.decode() for s in await proc.communicate()]
             _ = await proc.wait()
 
-            yield stdout
-            yield stderr
+            print(stdout)
+            print(stderr)
 
         shutil.copytree(jb_root / "_build/html", built_path)
