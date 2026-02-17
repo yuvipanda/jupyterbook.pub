@@ -77,14 +77,18 @@ class RepoHandler(BaseHandler):
                     mimetype = "application/gzip"
                 if mimetype:
                     self.set_header("Content-Type", mimetype)
-                with open(full_path, "rb") as f:
-                    # hard code the chunk size for now
-                    # 64 * 1024 is what tornado uses https://github.com/tornadoweb/tornado/blob/e14929c305019fd494c74934445f0b72af4f98ab/tornado/web.py#L3020
-                    while True:
-                        chunk = f.read(64 * 1024)
-                        if not chunk:
-                            break
-                        self.write(chunk)
+                try:
+                    with open(full_path, "rb") as f:
+                        # hard code the chunk size for now
+                        # 64 * 1024 is what tornado uses https://github.com/tornadoweb/tornado/blob/e14929c305019fd494c74934445f0b72af4f98ab/tornado/web.py#L3020
+                        while True:
+                            chunk = f.read(64 * 1024)
+                            if not chunk:
+                                break
+                            self.write(chunk)
+                except FileNotFoundError:
+                    # The site is built, just that this particular file doesn't exist
+                    raise HTTPError(404)
             case DoesNotExist(repo):
                 raise tornado.web.HTTPError(404, f"{repo} could not be resolved")
 
