@@ -19,12 +19,6 @@ class JupyterLiteBuilder(Renderer):
             ]
             proc = await asyncio.create_subprocess_exec(
                 *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = [s.decode() for s in await proc.communicate()]
             _ = await proc.wait()
-
-            print(stdout)
-            print(stderr)

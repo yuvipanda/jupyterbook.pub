@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import mimetypes
 import os
@@ -15,8 +16,9 @@ from repoproviders.fetchers.fetcher import fetch
 from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists
 from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
-from traitlets import Bool, Instance, Int, Integer, Unicode
+from traitlets import Bool, Instance, Int, Integer, Type, Unicode
 from traitlets.config import Application
+
 
 from .builder.base import Renderer
 from .builder.book import JupyterBook2Builder
@@ -100,6 +102,24 @@ class ResolveHandler(BaseHandler):
         self.write(to_json(answer))
 
 
+class SiteConfigApiHandler(BaseHandler):
+    async def get(self):
+        # FIXME: This shouldn't be an API call, but something we ship inline with the html
+        # FIGURE OUT THE PARCEL BUILD SITUATION SO index.html CAN BE SERVED AS A TEMPLATE
+        # At least cache this so it doesn't cause flashing
+        self.add_header("Cache-Control", "public; max-age=36000")
+        print(self.app.site_subheading)
+        self.write(
+            json.dumps(
+                {
+                    "site_title": self.app.site_title,
+                    "site_heading": self.app.site_heading,
+                    "site_subheading": self.app.site_subheading,
+                }
+            )
+        )
+
+
 class JupyterBookPubApp(Application):
     debug = Bool(True, help="Turn on debug mode", config=True)
 
@@ -130,7 +150,30 @@ class JupyterBookPubApp(Application):
 
     resolver_cache = Instance(klass=TTLCache)
 
+    renderer_class = Type(
+        JupyterBook2Builder,
+        klass=Renderer,
+        config=True,
+        help="Renderer to use for this installation",
+    )
     renderer = Instance(klass=Renderer)
+
+    site_title = Unicode("JupyterBook.pub", help="Title of the website", config=True)
+
+    site_heading = Unicode(
+        "JupyterBook.pub", help="Heading of the website", config=True
+    )
+
+    site_subheading = Unicode(
+        "Instantly build and share your JupyterBook repository wherever it is",
+        help="Subheading of the website",
+        config=True,
+    )
+
+    config_file = Unicode(
+        "jupyterbook_pub_config.py", help="The config file to load", config=True
+    )
+    aliases = {"f": "JupyterBookPubApp.config_file"}
 
     async def resolve(self, question: str):
         if question in self.resolver_cache:
@@ -148,6 +191,7 @@ class JupyterBookPubApp(Application):
     @override
     def initialize(self, argv=None) -> None:
         super().initialize(argv)
+        self.load_config_file(self.config_file)
         if self.debug:
             self.log_level = logging.DEBUG
         tornado.options.options.logging = logging.getLevelName(self.log_level)
@@ -165,7 +209,7 @@ class JupyterBookPubApp(Application):
             maxsize=self.resolver_cache_max_size, ttl=10 * 60
         )
 
-        self.renderer = JupyterBook2Builder(parents=self)
+        self.renderer = self.renderer_class(parents=self)
 
     async def start(self) -> None:
         self.initialize()
@@ -176,6 +220,11 @@ class JupyterBookPubApp(Application):
                     ResolveHandler,
                     {"app": self},
                     name="resolve-api",
+                ),
+                url(
+                    r"/api/v1/site-config",
+                    SiteConfigApiHandler,
+                    {"app": self},
                 ),
                 url(r"/repo/(.*?)/(.*)", RepoHandler, {"app": self}, name="repo"),
                 (
