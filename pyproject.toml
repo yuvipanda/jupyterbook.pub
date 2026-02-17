@@ -40,7 +40,9 @@ dependencies = [
     "cachetools",
     "traitlets",
     "jupyter-book>=2.0",
-    "ruamel.yaml"
+    "ruamel.yaml",
+    "jupyterlite",
+    "jupyterlite-xeus"
 ]
 
 [project.urls]
