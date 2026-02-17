@@ -19,6 +19,7 @@ class JupyterLiteBuilder(Renderer):
             ]
             proc = await asyncio.create_subprocess_exec(
                 *command,
+                cwd=str(repo_path)
             )
 
             _ = await proc.wait()
