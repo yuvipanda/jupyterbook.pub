@@ -42,7 +42,7 @@ dependencies = [
     "jupyter-book>=2.0",
     "ruamel.yaml",
     "jupyterlite-core",
-    "jupyterlite-xeus",
+    "jupyterlite-pyodide-kernel",
     "libarchive-c"
 ]
 
