@@ -19,7 +19,6 @@ from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
 from traitlets import Bool, Instance, Int, Integer, Type, Unicode
 from traitlets.config import Application
 
-
 from .builder.base import Renderer
 from .builder.book import JupyterBook2Builder
 from .cache import make_checkout_cache_key, make_rendered_cache_key
