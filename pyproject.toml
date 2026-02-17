@@ -41,8 +41,9 @@ dependencies = [
     "traitlets",
     "jupyter-book>=2.0",
     "ruamel.yaml",
-    "jupyterlite",
-    "jupyterlite-xeus"
+    "jupyterlite-core",
+    "jupyterlite-xeus",
+    "libarchive-c"
 ]
 
 [project.urls]
