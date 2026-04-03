@@ -89,9 +89,9 @@ class RepoHandler(BaseHandler):
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
 
                 if not repo_path.exists():
-                    print(f"Fetching {repo}...\n")
+                    self.log.info(f"Fetching {repo}...\n")
                     await fetch(repo, repo_path)
-                    print(f"Fetched {repo}")
+                    self.log.info(f"Fetched {repo}")
 
                 if not built_path.exists():
                     await self.app.renderer.render(repo_path, built_path, base_url)
@@ -137,14 +137,12 @@ class ResolveHandler(BaseHandler):
 class IndexHandler(NoXSRFMixin, BaseHandler):
     @maybe_authenticated
     async def get(self):
-        config = {}
-
         self.write(
             self.app.templates_loader.get_template("home.html").render(
                 site_title=self.app.site_title,
                 site_heading=self.app.site_heading,
                 site_subheading=self.app.site_subheading,
-                config=config,
+                site_base_url=self.app.base_url,
             )
         )
 

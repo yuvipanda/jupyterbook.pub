@@ -8,16 +8,23 @@ export default function renderApp({
     title,
     heading,
     subheading,
+    baseUrl,
 }: {
     title: string;
     heading: string;
     subheading: string;
+    baseUrl: string;
 }) {
     let container = document.getElementById("root")!;
     let root = createRoot(container);
     root.render(
         <StrictMode>
-            <App title={title} heading={heading} subheading={subheading} />
+            <App
+                title={title}
+                heading={heading}
+                subheading={subheading}
+                baseUrl={baseUrl}
+            />
         </StrictMode>,
     );
 }
