@@ -1,11 +1,10 @@
 export interface SiteConfig {
-    site_title: string
-    site_heading: string
-    site_subheading: string
+    site_title: string;
+    site_heading: string;
+    site_subheading: string;
 }
 
-
-export async function getSiteConfig() : Promise<SiteConfig> {
+export async function getSiteConfig(): Promise<SiteConfig> {
     // FIXME: BaseURL support plz
     const queryUrl = new URL("api/v1/site-config", window.location.origin);
 
