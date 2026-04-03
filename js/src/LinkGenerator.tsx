@@ -38,7 +38,7 @@ export function LinkGenerator({ baseUrl }: { baseUrl: string }) {
                 return;
             }
 
-            const answer = await resolve(debouncedRepoUrl);
+            const answer = await resolve(baseUrl, debouncedRepoUrl);
             if (answer === null) {
                 setResolvedRepo(null);
             } else {
