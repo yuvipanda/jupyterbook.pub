@@ -91,7 +91,8 @@ only-packages = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/jupyterbook_pub"]
 artifacts = [
-  "src/jupyterbook_pub/generated_static"
+  "src/jupyterbook_pub/generated_static",
+  "src/jupyterbook_pub/templates"
 ]
 
 
