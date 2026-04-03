@@ -1,0 +1,35 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "jupyterbook-pub.ingress.fullname" . }}
+  labels:
+    {{- include "jupyterbook-pub.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- . | toYaml | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $host := .Values.ingress.hosts | default (list "") }}
+    - http:
+        paths:
+          - path: {{ $.Values.config.JupyterBookPubApp.base_url | trimSuffix "/" }}/{{ $.Values.ingress.pathSuffix }}
+            pathType: {{ $.Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ include "jupyterbook-pub.app.fullname" $ }}
+                port:
+                  name: http
+      {{- if $host }}
+      host: {{ $host | quote }}
+      {{- end }}
+    {{- end }}
+{{- end }}
