@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import copy from "copy-to-clipboard";
 import { Answer, resolve } from "./resolver";
-import { useDebounce } from 'use-debounce';
+import { useDebounce } from "use-debounce";
 
 function makeShareableLink(repoUrl: string) {
     // FIXME: I am committing a cardinal sin here that makes it difficult to host this under subpaths
@@ -38,14 +38,14 @@ export function LinkGenerator() {
         const validateUrl = async () => {
             if (debouncedRepoUrl === "") {
                 setResolvedRepo(null);
-                return
+                return;
             }
 
             const answer = await resolve(debouncedRepoUrl);
             if (answer === null) {
                 setResolvedRepo(null);
             } else {
-                setResolvedRepo(answer)
+                setResolvedRepo(answer);
             }
         };
         validateUrl();
@@ -57,40 +57,94 @@ export function LinkGenerator() {
                 <div className="m-3 col-12">
                     <div className="input-group">
                         <div className="form-floating">
-                            <input type="input" className="form-control" id="repo-url" placeholder="Enter your repository URL here" onChange={e => {
-                                const rawRepoUrl = e.target.value;
-                                const normalizedRepoUrl = normalizeRepoUrl(rawRepoUrl);
-                                setRepoUrl(normalizedRepoUrl);
-                                if (normalizedRepoUrl === null) {
-                                    setShareUrl(null);
-                                } else {
-                                    setShareUrl(makeShareableLink(normalizedRepoUrl));
-                                }
-                            }}></input>
+                            <input
+                                type="input"
+                                className="form-control"
+                                id="repo-url"
+                                placeholder="Enter your repository URL here"
+                                onChange={(e) => {
+                                    const rawRepoUrl = e.target.value;
+                                    const normalizedRepoUrl =
+                                        normalizeRepoUrl(rawRepoUrl);
+                                    setRepoUrl(normalizedRepoUrl);
+                                    if (normalizedRepoUrl === null) {
+                                        setShareUrl(null);
+                                    } else {
+                                        setShareUrl(
+                                            makeShareableLink(normalizedRepoUrl),
+                                        );
+                                    }
+                                }}
+                            ></input>
                             <label htmlFor="repoUrl">
-                                {(resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist") ? <span>Enter your repository URL here</span> : <>
-
-                                    <span className="badge text-bg-secondary">{resolvedRepo.kind}</span>
-                                    {Object.entries(resolvedRepo.data).map(([key, value]) =>
-                                        <span className="mx-1" key={key}>
-                                            <code title={key}>{value}</code></span>
-                                    )}
-                                </>
-                                }
+                                {resolvedRepo === null ||
+                                resolvedRepo.certainity === "DoesNotExist" ? (
+                                    <span>Enter your repository URL here</span>
+                                ) : (
+                                    <>
+                                        <span className="badge text-bg-secondary">
+                                            {resolvedRepo.kind}
+                                        </span>
+                                        {Object.entries(resolvedRepo.data).map(
+                                            ([key, value]) => (
+                                                <span className="mx-1" key={key}>
+                                                    <code title={key}>{value}</code>
+                                                </span>
+                                            ),
+                                        )}
+                                    </>
+                                )}
                             </label>
                         </div>
-                        <button className="btn btn-primary" type="button" onClick={() => window.location.href = shareUrl.toString()} disabled={resolvedRepo === null || resolvedRepo.certainity === "DoesNotExist"}>Go!</button>
+                        <button
+                            className="btn btn-primary"
+                            type="button"
+                            onClick={() =>
+                                (window.location.href = shareUrl?.toString() ?? "")
+                            }
+                            disabled={
+                                resolvedRepo === null ||
+                                resolvedRepo.certainity === "DoesNotExist"
+                            }
+                        >
+                            Go!
+                        </button>
                     </div>
-                    <small>Supports GitHub (Repos, <abbr title="Branches, Commits & Tags">Refs</abbr>, Action Artifacts & PRs), Public Google Drive Folders, <abbr title="From Zenodo, Figshare & Dataverse">DOIs</abbr>, <a href="https://github.com/yuvipanda/repoproviders?tab=readme-ov-file#supported-repositories">and many others</a></small>
+                    <small>
+                        Supports GitHub (Repos,{" "}
+                        <abbr title="Branches, Commits & Tags">Refs</abbr>, Action
+                        Artifacts & PRs), Public Google Drive Folders,{" "}
+                        <abbr title="From Zenodo, Figshare & Dataverse">DOIs</abbr>,{" "}
+                        <a href="https://github.com/yuvipanda/repoproviders?tab=readme-ov-file#supported-repositories">
+                            and many others
+                        </a>
+                    </small>
                 </div>
                 <div className="m-3 input-group">
                     <div className="form-floating">
-                        <input type="input" className="form-control" id="share-url" placeholder="Shareable link to your rendered book" readOnly value={shareUrl ? shareUrl.toString() : ""}></input>
-                        <label className="form-label">Share this link with anyone so they can see a rendered version of your JupyterBook</label>
+                        <input
+                            type="input"
+                            className="form-control"
+                            id="share-url"
+                            placeholder="Shareable link to your rendered book"
+                            readOnly
+                            value={shareUrl?.toString() ?? ""}
+                        ></input>
+                        <label className="form-label">
+                            Share this link with anyone so they can see a rendered
+                            version of your JupyterBook
+                        </label>
                     </div>
-                    <button className="btn btn-outline-secondary" type="button" onClick={() => copy(shareUrl?.toString())} disabled={shareUrl === null}><i className="bi bi-copy"></i></button>
+                    <button
+                        className="btn btn-outline-secondary"
+                        type="button"
+                        onClick={() => copy(shareUrl?.toString() ?? "")}
+                        disabled={shareUrl === null}
+                    >
+                        <i className="bi bi-copy"></i>
+                    </button>
                 </div>
             </form>
         </div>
-    )
+    );
 }

@@ -2,10 +2,10 @@
   "name": "jupyterbook.pub",
   "private": true,
   "version": "0.0.0",
-  "source": "src/index.html",
+  "type": "module",
   "scripts": {
-    "dev:watch": "parcel src/index.html --dist-dir ../src/jupyterbook_pub/generated_static",
-    "build": "parcel build --dist-dir ../src/jupyterbook_pub/generated_static"
+    "dev:watch": "vite",
+    "build": "tsc -b && vite build"
   },
   "dependencies": {
     "bootstrap": "^5.3.8",
@@ -16,9 +16,11 @@
     "use-debounce": "^10.0.6"
   },
   "devDependencies": {
-    "@parcel/transformer-sass": "^2.16.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "parcel": "^2.14.0"
+    "@vitejs/plugin-react": "^6.0.1",
+    "sass": "^1.99.0",
+    "vite": "^8.0.3",
+    "typescript": "~5.9.3"
   }
 }

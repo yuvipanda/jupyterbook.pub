@@ -105,20 +105,16 @@ class ResolveHandler(BaseHandler):
         self.write(to_json(answer))
 
 
-class SiteConfigApiHandler(BaseHandler):
+class IndexHandler(BaseHandler):
     async def get(self):
-        # FIXME: This shouldn't be an API call, but something we ship inline with the html
-        # FIGURE OUT THE PARCEL BUILD SITUATION SO index.html CAN BE SERVED AS A TEMPLATE
-        # At least cache this so it doesn't cause flashing
-        self.add_header("Cache-Control", "public; max-age=36000")
-        print(self.app.site_subheading)
+        config = {}
+
         self.write(
-            json.dumps(
-                {
-                    "site_title": self.app.site_title,
-                    "site_heading": self.app.site_heading,
-                    "site_subheading": self.app.site_subheading,
-                }
+            self.app.templates_loader.get_template("home.html").render(
+                site_title=self.app.site_title,
+                site_heading=self.app.site_heading,
+                site_subheading=self.app.site_subheading,
+                config=config,
             )
         )
 
@@ -225,12 +221,18 @@ class JupyterBookPubApp(Application):
                     name="resolve-api",
                 ),
                 url(
-                    r"/api/v1/site-config",
-                    SiteConfigApiHandler,
+                    r"/repo/(.*?)/(.*)",
+                    RepoHandler,
                     {"app": self},
+                    name="repo",
                 ),
-                url(r"/repo/(.*?)/(.*)", RepoHandler, {"app": self}, name="repo"),
-                (
+                url(
+                    "/",
+                    IndexHandler,
+                    {"app": self},
+                    name="app",
+                ),
+                url(
                     "/(.*)",
                     StaticFileHandler,
                     {
