@@ -81,7 +81,7 @@ class RepoHandler(BaseHandler):
             case Exists(repo) | MaybeExists(repo):
                 # In the future, we can explicitly specify full URL here so we
                 # can support other kinds of domains too
-                base_url = f"/repo/{raw_repo_spec}"
+                base_url = url_path_join(self.app.base_url, f"repo/{raw_repo_spec}")
                 root_build_path = Path(self.app.built_sites_root)
                 root_build_path.mkdir(exist_ok=True)
 
@@ -302,7 +302,7 @@ class JupyterBookPubApp(Application):
                     name="resolve-api",
                 ),
                 url(
-                    r"/repo/(.*?)/(.*)",
+                    url_path_join(base_url, r"/repo/(.*?)/(.*)"),
                     RepoHandler,
                     {"app": self},
                     name="repo",
