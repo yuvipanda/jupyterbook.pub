@@ -6,7 +6,7 @@ import { useDebounce } from "use-debounce";
 function makeShareableLink(repoUrl: string) {
     // FIXME: I am committing a cardinal sin here that makes it difficult to host this under subpaths
     // but how do I get this information in here otherwise? I do not know. Forgive me for my sins
-    const baseUrl = window.location.origin;
+    const baseUrl = window.location.href;
     return new URL("repo/" + encodeURIComponent(repoUrl) + "/", baseUrl);
 }
 
