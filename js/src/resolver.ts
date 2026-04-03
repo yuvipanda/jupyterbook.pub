@@ -4,9 +4,12 @@ export interface Answer {
     data: object;
 }
 
-export async function resolve(question: string): Promise<Answer | null> {
+export async function resolve(
+    baseUrl: string,
+    question: string,
+): Promise<Answer | null> {
     // FIXME: BaseURL support plz
-    const queryUrl = new URL("api/v1/resolve", window.location.href);
+    const queryUrl = new URL(`${baseUrl}api/v1/resolve`, window.location.href);
     queryUrl.searchParams.append("q", question);
 
     const resp = await fetch(queryUrl);
