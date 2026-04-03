@@ -6,7 +6,7 @@ export interface SiteConfig {
 
 export async function getSiteConfig(): Promise<SiteConfig> {
     // FIXME: BaseURL support plz
-    const queryUrl = new URL("api/v1/site-config", window.location.origin);
+    const queryUrl = new URL("api/v1/site-config", window.location.toString());
 
     const resp = await fetch(queryUrl);
 

@@ -45,6 +45,7 @@ dependencies = [
     "jupyterlite-pyodide-kernel",
     "libarchive-c",
     "jupyter-book-site-renderer"
+    "jupyterhub"
 ]
 
 [project.urls]
