@@ -43,7 +43,8 @@ dependencies = [
     "ruamel.yaml",
     "jupyterlite-core",
     "jupyterlite-pyodide-kernel",
-    "libarchive-c"
+    "libarchive-c",
+    "jupyterhub"
 ]
 
 [project.urls]

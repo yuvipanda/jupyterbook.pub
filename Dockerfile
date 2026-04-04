@@ -1,6 +1,6 @@
 FROM python:3.14-trixie
 
-RUN apt update >/dev/null && apt install --yes nodejs npm >/dev/null
+RUN apt update >/dev/null && apt install --yes nodejs tini npm >/dev/null
 
 # Install a new enough version of rclone
 RUN curl https://rclone.org/install.sh |  bash
@@ -21,4 +21,5 @@ RUN cd js && \
 RUN python3 -m pip install /opt/jupyterbook.pub
 
 # Overriden for dokku
+ENTRYPOINT ["tini", "--"]
 CMD ["python3", "-m", "jupyterbook_pub.app"]
