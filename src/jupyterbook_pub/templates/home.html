@@ -10,13 +10,15 @@
     <body>
         <div id="root"></div>
     </body>
+    <script id="config" type="application/json">
+        {{ config | tojson }}
+    </script>
+
     <script type="module">
         import renderApp from "./index.js";
-        renderApp({
-            title: "{{ site_title }}",
-            heading: "{{ site_heading }}",
-            subheading: "{{ site_subheading }}",
-            baseUrl: "{{ site_baseurl }}",
-        });
+        const configElem = document.querySelector("#config");
+        const config = JSON.parse(configElem.innerHTML);
+
+        renderApp(config);
     </script>
 </html>
