@@ -139,13 +139,14 @@ class ResolveHandler(BaseHandler):
 class IndexHandler(NoXSRFMixin, BaseHandler):
     @maybe_authenticated
     async def get(self):
+        config = {
+            "title": self.app.site_title,
+            "heading": self.app.site_heading,
+            "subheading": self.app.site_subheading,
+            "baseUrl": self.app.base_url,
+        }
         self.write(
-            self.app.templates_loader.get_template("home.html").render(
-                site_title=self.app.site_title,
-                site_heading=self.app.site_heading,
-                site_subheading=self.app.site_subheading,
-                site_base_url=self.app.base_url,
-            )
+            self.app.templates_loader.get_template("home.html").render(config=config)
         )
 
 
