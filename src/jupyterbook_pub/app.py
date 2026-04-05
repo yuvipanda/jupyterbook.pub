@@ -287,33 +287,32 @@ class JupyterBookPubApp(Application):
     async def start(self) -> None:
         self.initialize()
 
-        base_url = os.environ["JUPYTERHUB_SERVICE_PREFIX"]
         self.web_app = tornado.web.Application(
             [
                 url(
-                    url_path_join(base_url, "/oauth_callback"),
+                    url_path_join(self.base_url, "oauth_callback"),
                     HubOAuthCallbackHandler,
                 ),
                 url(
-                    url_path_join(base_url, r"/api/v1/resolve"),
+                    url_path_join(self.base_url, r"api/v1/resolve"),
                     ResolveHandler,
                     {"app": self},
                     name="resolve-api",
                 ),
                 url(
-                    url_path_join(base_url, r"/repo/(.*?)/(.*)"),
+                    url_path_join(self.base_url, r"repo/(.*?)/(.*)"),
                     RepoHandler,
                     {"app": self},
                     name="repo",
                 ),
                 url(
-                    url_path_join(base_url, "/"),
+                    self.base_url,
                     IndexHandler,
                     {"app": self},
                     name="app",
                 ),
                 url(
-                    url_path_join(base_url, "/(.*)"),
+                    url_path_join(self.base_url, "(.*)"),
                     StaticFileHandler,
                     {
                         "path": str(Path(__file__).parent / "generated_static"),

@@ -4,7 +4,7 @@ import { Answer, resolve } from "./resolver";
 import { useDebounce } from "use-debounce";
 
 function makeShareableLink(baseUrl: string, repoUrl: string) {
-    return new URL(`${baseUrl}${encodeURIComponent(repoUrl)}/`, window.location.origin);
+    return new URL(`${baseUrl}repo/${encodeURIComponent(repoUrl)}/`, window.location.origin);
 }
 
 function normalizeRepoUrl(repoUrl: string) {
