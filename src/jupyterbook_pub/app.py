@@ -232,7 +232,7 @@ class JupyterBookPubApp(Application):
             maxsize=self.resolver_cache_max_size, ttl=10 * 60
         )
 
-        self.renderer = self.renderer_class(parents=self)
+        self.renderer = self.renderer_class(parent=self)
 
     async def start(self) -> None:
         self.initialize()
