@@ -16,7 +16,7 @@ from repoproviders.fetchers.fetcher import fetch
 from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists
 from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
-from traitlets import Bool, Instance, Int, Integer, Type, Unicode
+from traitlets import default, Bool, Instance, Int, Integer, Type, Unicode
 from traitlets.config import Application
 
 from .builder.base import Renderer
@@ -125,17 +125,41 @@ class JupyterBookPubApp(Application):
     port = Int(
         int(os.environ.get("PORT", "9200")), help="Port to listen on", config=True
     )
+    persistent_path = Unicode(
+        help="Base path for persistent files like repo checkouts, and template downloads. Created if it doesn't exist",
+        config=True,
+    )
+
+    @default("persistent_path")
+    def _default_persistent_path(self):
+        return str(Path.cwd())
+
     repo_checkout_root = Unicode(
-        str(Path(__file__).parent.parent.parent / "repos"),
         help="Path to check out repos to. Created if it doesn't exist",
         config=True,
     )
 
+    @default("repo_checkout_root")
+    def _default_repo_checkout_root(self):
+        return str(Path(self.persistent_path) / "repos")
+
     built_sites_root = Unicode(
-        str(Path(__file__).parent.parent.parent / "built_sites"),
         help="Path to copy built files to. Created if it doesn't exist",
         config=True,
     )
+
+    @default("built_sites_root")
+    def _default_built_sites_root(self):
+        return str(Path(self.persistent_path) / "built_sites")
+
+    templates_root = Unicode(
+        help="Path to download MyST templates to. Created if it doesn't exist",
+        config=True,
+    )
+
+    @default("templates_root")
+    def _default_templates_root(self):
+        return str(Path(self.persistent_path) / "templates")
 
     resolver_cache_ttl_seconds = Integer(
         10 * 60,
