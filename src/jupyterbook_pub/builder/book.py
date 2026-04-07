@@ -50,7 +50,7 @@ class JupyterBook2Builder(Renderer):
         help="Allow builds of Jupyter Book projects from source. This may involve execution of foreign JS",
         config=True,
     )
-    theme = Unicode(
+    default_theme = Unicode(
         "site/myst/book-theme",
         help="The default theme id (of the form `site/group/name`) to use for rendering into HTML. Defaults to `site/myst/book-theme`",
         config=True,
@@ -402,20 +402,20 @@ class JupyterBook2Builder(Renderer):
         # Assume book theme for now
         jupyter_book_builder = self.parent
         template_path = Path(jupyter_book_builder.templates_root) / Path(
-            *self.theme.split("/")
+            *self.default_theme.split("/")
         )
 
         if template_path.exists():
             return template_path
 
-        self.log.info(f"Downloading Jupyter Book template: {self.theme!r}")
+        self.log.info(f"Downloading Jupyter Book template: {self.default_theme!r}")
         try:
             await self.run_silent_process(
                 "jupyter",
                 "book",
                 "templates",
                 "download",
-                self.theme,
+                self.default_theme,
                 template_path,
             )
         except ProcessFailedError:
