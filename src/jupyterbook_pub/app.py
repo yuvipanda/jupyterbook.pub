@@ -79,12 +79,6 @@ class RepoHandler(BaseHandler):
             raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
             case Exists(repo) | MaybeExists(repo):
-                # In the future, we can explicitly specify full URL here so we
-                # can support other kinds of domains too
-                base_url = url_path_join(self.app.base_url, f"repo/{raw_repo_spec}")
-                root_build_path = Path(self.app.built_sites_root)
-                root_build_path.mkdir(exist_ok=True)
-
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
 
                 if not repo_path.exists():
@@ -92,34 +86,19 @@ class RepoHandler(BaseHandler):
                     await fetch(repo, repo_path)
                     self.log.info(f"Fetched {repo}")
 
-                built_path = root_build_path / make_rendered_cache_key(repo, base_url)
-                if not built_path.exists():
+                root_build_path = Path(self.app.built_sites_root)
+                root_build_path.mkdir(exist_ok=True)
+
+                build_cache_key = make_rendered_cache_key(repo, self.app.base_url)
+                base_url = url_path_join(self.app.base_url, "built", build_cache_key)
+                build_path = root_build_path / build_cache_key
+
+                # If the built path exists, redirect there!
+                if not build_path.exists():
                     await self.app.executor.execute(
-                        self.app.builder_class, repo_path, built_path, base_url
+                        self.app.builder_class, repo_path, build_path, base_url
                     )
-                # This is a *sure* path traversal attack
-                full_path = built_path / path
-                if full_path.is_dir():
-                    full_path = full_path / "index.html"
-                mimetype, encoding = mimetypes.guess_type(full_path)
-                if encoding == "gzip":
-                    mimetype = "application/gzip"
-                if mimetype:
-                    self.set_header("Content-Type", mimetype)
-                try:
-                    with open(full_path, "rb") as f:
-                        # hard code the chunk size for now
-                        # 64 * 1024 is what tornado uses https://github.com/tornadoweb/tornado/blob/e14929c305019fd494c74934445f0b72af4f98ab/tornado/web.py#L3020
-                        while True:
-                            chunk = f.read(64 * 1024)
-                            if not chunk:
-                                break
-                            self.write(chunk)
-                except FileNotFoundError:
-                    # The site is built, just that this particular file doesn't exist
-                    raise HTTPError(404)
-            case DoesNotExist(repo):
-                raise tornado.web.HTTPError(404, f"{repo} could not be resolved")
+                return self.redirect(base_url)
 
 
 class ResolveHandler(BaseHandler):
@@ -304,6 +283,14 @@ class JupyterBookPubApp(Application):
                     RepoHandler,
                     {"app": self},
                     name="repo",
+                ),
+                url(
+                    url_path_join(self.base_url, r"built/(.*?)"),
+                    StaticFileHandler,
+                    {
+                        "path": self.built_sites_root,
+                        "default_filename": "index.html",
+                    },
                 ),
                 url(
                     self.base_url,
