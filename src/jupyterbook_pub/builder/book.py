@@ -27,6 +27,9 @@ from .base import Renderer
 # We don't have to roundtrip here, because nobody reads that YAML
 yaml = YAML(typ="safe")
 
+# Implementation detail:
+# Special string that is set by the theme when building HTML from AST (static)
+# We find and replace this.
 ASSETS_FOLDER = "myst_assets_folder"
 
 
@@ -534,6 +537,20 @@ class JupyterBook2Builder(Renderer):
         return ast_path, template_path
 
     async def render(self, source_or_ast_path: Path, built_path: Path, base_url: str):
+        """
+        Render a Jupyter Book into HTML. There are several pathways:
+
+        1. AST (from `jupyter book build --site`) into HTML
+        2. HTML (from `jupyter book build --html`) directly
+        3. Source into AST (via `jupyter book build --site`) into HTML
+
+        Jupyter Book does not record information about the template that was used
+        to build AST, so we use a hard-coded template (by default, the book-theme).
+
+        :param source_or_ast_path: path to the source object.
+        :param built_path: path to the built HTML outputs.
+        :base_url: base URL of the ultimate render path.
+        """
         # Source is AST, build HTML from it
         if (source_or_ast_path / "config.json").exists():
             template_path = await self.ensure_default_template_installed()
