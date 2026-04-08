@@ -396,8 +396,10 @@ class JupyterBook2Builder(Renderer):
         public_path = content_path / "public"
         shutil.copytree(public_path, output_dir / "build", dirs_exist_ok=True)
 
-    async def ensure_theme_template(self) -> pathlib.Path:
-        """Ensure that the default Jupyter Book template (theme) is available and installed"""
+    async def ensure_default_template_installed(self) -> pathlib.Path:
+        """
+        Ensure that the default Jupyter Book template (theme) is available and installed
+        """
 
         # Assume book theme for now
         jupyter_book_builder = self.parent
@@ -423,11 +425,22 @@ class JupyterBook2Builder(Renderer):
                 "An error occurred whilst downloading Jupyter Book template"
             ) from None
 
+        await self.install_downloaded_template(template_path)
+        return template_path
+
+    async def install_downloaded_template(self, template_path: Path):
+        """
+        Ensure that a downloaded MyST template has been installed.
+
+        :param template_path: path to downloaded template containing template.yml
+        """
         template_config = yaml.load((template_path / "template.yml").read_text())
 
         # Install the template
+        template_name = template_config.get("title", "<unnamed template>")
         install_cmd = template_config.get("build", {}).get("install")
         if install_cmd is not None:
+            self.log.info(f"Installing Jupyter Book template: {template_name!r}")
             try:
                 await self.run_silent_process(
                     *shlex.split(install_cmd),
@@ -438,12 +451,11 @@ class JupyterBook2Builder(Renderer):
                     "An error occurred whilst installing Jupyter Book template"
                 ) from None
 
-        return template_path
-
     async def render_site_to_html(
         self,
         content_path: pathlib.Path,
-        output_dir: pathlib.Path,
+        template_path: pathlib.Path,
+        output_path: pathlib.Path,
         base_url: str,
     ):
         """
@@ -465,8 +477,6 @@ class JupyterBook2Builder(Renderer):
         content_port = random_port()
         theme_port = random_port()
 
-        template_path = await self.ensure_theme_template()
-
         # Implementation derived from upstream in
         # https://github.com/jupyter-book/mystmd/blob/a137e13d8ae607c7008a1912146d0e30ee8545db/packages/myst-cli/src/build/html/index.ts
         async with (
@@ -480,13 +490,13 @@ class JupyterBook2Builder(Renderer):
             theme_url = f"http://localhost:{theme_port}"
 
             routes = self.build_routes(project, theme_url, base_url)
-            await self.fetch_routes(session, routes, output_dir)
-            await self.fetch_static_files(session, content_url, output_dir)
-            self.copy_template_public_files(template_path, output_dir)
-            self.copy_content_public_files(content_path, output_dir)
-            self.rewrite_assets(output_dir, base_url)
+            await self.fetch_routes(session, routes, output_path)
+            await self.fetch_static_files(session, content_url, output_path)
+            self.copy_template_public_files(template_path, output_path)
+            self.copy_content_public_files(content_path, output_path)
+            self.rewrite_assets(output_path, base_url)
 
-    async def build_site_from_book(self, project_path: Path):
+    async def build_site_from_book(self, project_path: Path) -> tuple[Path, Path]:
         """
         Build Jupyter Book into a site.
 
@@ -509,12 +519,27 @@ class JupyterBook2Builder(Renderer):
         ast_path = project_path / "_build" / "site"
         if not ast_path.exists():
             raise RuntimeError("Jupyter Book build failed to produce AST")
-        return ast_path
+
+        # We will find one, it will have been downloaded by myst build
+        template_yml_path = next(
+            (project_path / "_build" / "templates").glob("**/template.yml")
+        )
+        template_path = template_yml_path.parent
+
+        # The template from myst build --site is not installed (as only the
+        # template.yml is needed). Let's now install it, so that we never pass around
+        # an uninstalled template
+        await self.install_downloaded_template(template_path)
+
+        return ast_path, template_path
 
     async def render(self, source_or_ast_path: Path, built_path: Path, base_url: str):
         # Source is AST, build HTML from it
         if (source_or_ast_path / "config.json").exists():
-            await self.render_site_to_html(source_or_ast_path, built_path, base_url)
+            template_path = await self.ensure_default_template_installed()
+            await self.render_site_to_html(
+                source_or_ast_path, template_path, built_path, base_url
+            )
             return
 
         # Source is a Jupyter Book
@@ -528,8 +553,12 @@ class JupyterBook2Builder(Renderer):
 
         # Otherwise try build from source
         if self.allow_source_builds:
-            ast_path = await self.build_site_from_book(source_or_ast_path)
-            await self.render_site_to_html(ast_path, built_path, base_url)
+            ast_path, template_path = await self.build_site_from_book(
+                source_or_ast_path
+            )
+            await self.render_site_to_html(
+                ast_path, template_path, built_path, base_url
+            )
             return
         else:
             raise RuntimeError("Not permitted to build AST from project sources")
