@@ -161,7 +161,7 @@ class JupyterBook2Builder(Renderer):
 
         return ast_path, template_path
 
-    async def render(self, source_or_ast_path: Path, built_path: Path, base_url: str):
+    async def render(self):
         """
         Render a Jupyter Book into HTML. There are several pathways:
 
@@ -176,6 +176,10 @@ class JupyterBook2Builder(Renderer):
         :param built_path: path to the built HTML outputs.
         :base_url: base URL of the ultimate render path.
         """
+        source_or_ast_path = Path(self.repo_path)
+        built_path = Path(self.built_path)
+        base_url = self.base_url
+
         # Source is AST, build HTML from it
         if (source_or_ast_path / "config.json").exists():
             await self.ast_renderer.render_html(
@@ -203,3 +207,8 @@ class JupyterBook2Builder(Renderer):
             return
         else:
             raise RuntimeError("Not permitted to build AST from project sources")
+
+
+if __name__ == "__main__":
+    app = JupyterBook2Builder()
+    asyncio.run(app.start())
