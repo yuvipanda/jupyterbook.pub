@@ -49,6 +49,9 @@ class DockerExecutor(BuildExecutor):
             f"type=bind,src={repo_path},dst={repo_mount_path}",
             "--mount",
             f"type=bind,src={built_path},dst={dest_mount_path}",
+            # For now, disable IPV6
+            "--sysctl",
+            "net.ipv6.conf.all.disable_ipv6=1",
             self.image,
             "python",
             "-m",
