@@ -14,6 +14,7 @@ import re
 import sys
 import urllib.parse
 import shlex
+import tempfile
 from typing import Optional
 
 from traitlets import Bool, Unicode
@@ -405,13 +406,7 @@ class JupyterBook2Builder(Renderer):
         """
 
         # Assume book theme for now
-        jupyter_book_builder = self.parent
-        template_path = Path(jupyter_book_builder.templates_root) / Path(
-            *self.default_theme.split("/")
-        )
-
-        if template_path.exists():
-            return template_path
+        template_path = pathlib.Path(tempfile.mkdtemp()) / "template"
 
         self.log.info(f"Downloading Jupyter Book template: {self.default_theme!r}")
         try:
@@ -536,7 +531,7 @@ class JupyterBook2Builder(Renderer):
 
         return ast_path, template_path
 
-    async def render(self, source_or_ast_path: Path, built_path: Path, base_url: str):
+    async def render(self):
         """
         Render a Jupyter Book into HTML. There are several pathways:
 
@@ -551,6 +546,10 @@ class JupyterBook2Builder(Renderer):
         :param built_path: path to the built HTML outputs.
         :base_url: base URL of the ultimate render path.
         """
+        source_or_ast_path = Path(self.repo_path)
+        built_path = Path(self.built_path)
+        base_url = self.base_url
+
         # Source is AST, build HTML from it
         if (source_or_ast_path / "config.json").exists():
             template_path = await self.ensure_default_template_installed()
@@ -579,3 +578,8 @@ class JupyterBook2Builder(Renderer):
             return
         else:
             raise RuntimeError("Not permitted to build AST from project sources")
+
+
+if __name__ == "__main__":
+    app = JupyterBook2Builder()
+    asyncio.run(app.start())
