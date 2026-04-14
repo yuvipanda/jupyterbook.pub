@@ -20,6 +20,8 @@ from traitlets.config import Application
 
 from .cache import make_checkout_cache_key, make_rendered_cache_key
 from .executor import BuildExecutor, LocalProcessExecutor
+from .builder.base import Renderer
+from .builder.book import JupyterBook2Builder
 
 
 class BaseHandler(RequestHandler):
@@ -64,7 +66,7 @@ class RepoHandler(BaseHandler):
 
                 if not built_path.exists():
                     await self.app.executor.execute(
-                        self.app.renderer, repo_path, built_path, base_url
+                        self.app.builder_class, repo_path, built_path, base_url
                     )
                 # This is a *sure* path traversal attack
                 full_path = built_path / path
@@ -171,7 +173,6 @@ class JupyterBookPubApp(Application):
     )
 
     resolver_cache = Instance(klass=TTLCache)
-    renderer = Unicode("jupyterbook_pub.builder.book", config=True)
 
     site_title = Unicode("JupyterBook.pub", help="Title of the website", config=True)
 
@@ -183,6 +184,13 @@ class JupyterBookPubApp(Application):
         "Instantly build and share your JupyterBook repository wherever it is",
         help="Subheading of the website",
         config=True,
+    )
+
+    builder_class = Type(
+        JupyterBook2Builder,
+        klass=Renderer,
+        config=True,
+        help="Builder to use for this installation",
     )
 
     executor_class = Type(

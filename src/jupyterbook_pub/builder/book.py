@@ -49,6 +49,10 @@ class JupyterBook2Builder(Renderer):
     If the AST does not exist, attempt a source build.
     """
 
+    @classmethod
+    def config_file_name(cls):
+        return "jupyter_book_2_builder"
+
     allow_source_builds = Bool(
         True,
         help="Allow builds of Jupyter Book projects from source. This may involve execution of foreign JS",
