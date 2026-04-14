@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jupyterbook-pub.app.fullname" . }}
+  labels:
+    {{- include "jupyterbook-pub.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "jupyterbook-pub.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "jupyterbook-pub.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+#           startupProbe:
+#             periodSeconds: 1
+#             failureThreshold: 60
+#             httpGet:
+#               path: {{ .Values.config.JupyterBookPubApp.base_url | trimSuffix "/" }}/
+#               port: http
+          env:
+            - name: JUPYTERHUB_SERVICE_PREFIX
+              value: {{ .Values.config.JupyterBookPubApp.base_url | quote }}
+            - name: JUPYTERHUB_API_TOKEN
+              value: {{ .Values.auth.hub_api_token | quote }}
+            - name: JUPYTERHUB_CLIENT_ID
+              value: {{ .Values.auth.oauth_client_id | quote }}
+            - name: JUPYTERHUB_API_URL
+              value: {{ .Values.auth.hub_api_url | quote }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "python"
+            - "-m"
+            - "jupyterbook_pub.app"
+            - "--JupyterBookPubApp.config_file"
+            - "/etc/jupyterbook.pub/mounted-secret/jupyterbook_pub_config.py"
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.JupyterBookPubApp.port }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: secret
+              mountPath: /etc/jupyterbook.pub/mounted-secret/
+              readOnly: true
+            {{- with .Values.volumeMounts }}
+            {{- tpl (. | toYaml ) $ | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: secret
+          secret:
+            secretName: {{ include "jupyterbook-pub.app.fullname" . }}
+        {{- with .Values.volumes }}
+        {{- tpl (. | toYaml ) $ | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

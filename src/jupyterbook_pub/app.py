@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import mimetypes
+import secrets
 import os
 from pathlib import Path
 from typing import override
@@ -11,12 +12,20 @@ from typing import override
 import tornado
 from cachetools import TTLCache
 from jinja2 import Environment, FileSystemLoader
+from jupyterhub.services.auth import HubOAuthenticated, HubOAuthCallbackHandler
+from jupyterhub.utils import url_path_join
 from repoproviders import resolve
 from repoproviders.fetchers.fetcher import fetch
 from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists
-from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
-from traitlets import default, Bool, Instance, Int, Integer, Type, Unicode
+from tornado.web import (
+    HTTPError,
+    RequestHandler,
+    StaticFileHandler as StaticHandler,
+    url,
+    authenticated,
+)
+from traitlets import default, validate, Bool, Instance, Int, Integer, Type, Unicode
 from traitlets.config import Application
 
 from .builder.base import Renderer
@@ -24,14 +33,31 @@ from .builder.book import JupyterBook2Builder
 from .cache import make_checkout_cache_key, make_rendered_cache_key
 
 
-class BaseHandler(RequestHandler):
+maybe_authenticated = (
+    authenticated if "JUPYTERHUB_SERVICE_PREFIX" in os.environ else lambda x: x
+)
+
+
+class BaseHandler(HubOAuthenticated, RequestHandler):
     def initialize(self, app: JupyterBookPubApp):
         self.app = app
         self.log = app.log
 
 
-class RepoHandler(BaseHandler):
+class NoXSRFMixin:
+    def check_xsrf_cookie(self):
+        # don't need XSRF protections on static assets
+        return
 
+
+class StaticFileHandler(NoXSRFMixin, HubOAuthenticated, StaticHandler):
+    @maybe_authenticated
+    async def get(self, path: str, include_body: bool = True) -> None:
+
+        return await super().get(path, include_body=include_body)
+
+
+class RepoHandler(BaseHandler):
     def get_spec_from_request(self, prefix):
         """
         Re-extract spec from request.path.
@@ -42,7 +68,9 @@ class RepoHandler(BaseHandler):
         spec = self.request.path[idx + len(prefix) :]
         return spec
 
+    @maybe_authenticated
     async def get(self, repo_spec: str, path: str):
+        # FIXME: baseurl
         spec = self.get_spec_from_request("/repo/")
 
         raw_repo_spec, _ = spec.split("/", 1)
@@ -53,46 +81,29 @@ class RepoHandler(BaseHandler):
             case Exists(repo) | MaybeExists(repo):
                 # In the future, we can explicitly specify full URL here so we
                 # can support other kinds of domains too
-                base_url = f"/repo/{raw_repo_spec}"
-                built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(
-                    repo, base_url
-                )
+                built_cache_key = make_rendered_cache_key(repo, self.app.base_url)
+                built_path = Path(self.app.built_sites_root) / built_cache_key
 
-                repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
+                base_url = url_path_join(self.app.base_url, "built", built_cache_key)
 
-                if not repo_path.exists():
-                    print(f"Fetching {repo}...\n")
-                    await fetch(repo, repo_path)
-                    print(f"Fetched {repo}")
-
+                # If the built path exists, redirect there!
                 if not built_path.exists():
+                    repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(
+                        repo
+                    )
+
+                    if not repo_path.exists():
+                        self.log.info(f"Fetching {repo}...\n")
+                        await fetch(repo, repo_path)
+                        self.log.info(f"Fetched {repo}")
+
                     await self.app.renderer.render(repo_path, built_path, base_url)
-                # This is a *sure* path traversal attack
-                full_path = built_path / path
-                if full_path.is_dir():
-                    full_path = full_path / "index.html"
-                mimetype, encoding = mimetypes.guess_type(full_path)
-                if encoding == "gzip":
-                    mimetype = "application/gzip"
-                if mimetype:
-                    self.set_header("Content-Type", mimetype)
-                try:
-                    with open(full_path, "rb") as f:
-                        # hard code the chunk size for now
-                        # 64 * 1024 is what tornado uses https://github.com/tornadoweb/tornado/blob/e14929c305019fd494c74934445f0b72af4f98ab/tornado/web.py#L3020
-                        while True:
-                            chunk = f.read(64 * 1024)
-                            if not chunk:
-                                break
-                            self.write(chunk)
-                except FileNotFoundError:
-                    # The site is built, just that this particular file doesn't exist
-                    raise HTTPError(404)
-            case DoesNotExist(repo):
-                raise tornado.web.HTTPError(404, f"{repo} could not be resolved")
+
+                return self.redirect(base_url)
 
 
 class ResolveHandler(BaseHandler):
+    @maybe_authenticated
     async def get(self):
         question = self.get_query_argument("q")
         if not question:
@@ -105,22 +116,41 @@ class ResolveHandler(BaseHandler):
         self.write(to_json(answer))
 
 
-class IndexHandler(BaseHandler):
+class IndexHandler(NoXSRFMixin, BaseHandler):
+    @maybe_authenticated
     async def get(self):
-        config = {}
-
+        config = {
+            "title": self.app.site_title,
+            "heading": self.app.site_heading,
+            "subheading": self.app.site_subheading,
+            "baseUrl": self.app.base_url,
+        }
         self.write(
-            self.app.templates_loader.get_template("home.html").render(
-                site_title=self.app.site_title,
-                site_heading=self.app.site_heading,
-                site_subheading=self.app.site_subheading,
-                config=config,
-            )
+            self.app.templates_loader.get_template("home.html").render(config=config)
         )
 
 
 class JupyterBookPubApp(Application):
     debug = Bool(True, help="Turn on debug mode", config=True)
+
+    base_url = Unicode("/", help="The base URL of the entire application", config=True)
+
+    @validate("base_url")
+    def _valid_base_url(self, proposal):
+        if not proposal.value.startswith("/"):
+            proposal.value = "/" + proposal.value
+        if not proposal.value.endswith("/"):
+            proposal.value = proposal.value + "/"
+        return proposal.value
+
+    hub_api_token = Unicode(
+        help="""API token for talking to the JupyterHub API""",
+        config=True,
+    )
+
+    @default("hub_api_token")
+    def _default_hub_token(self):
+        return os.environ.get("JUPYTERHUB_API_TOKEN", "")
 
     port = Int(
         int(os.environ.get("PORT", "9200")), help="Port to listen on", config=True
@@ -236,28 +266,41 @@ class JupyterBookPubApp(Application):
 
     async def start(self) -> None:
         self.initialize()
+
         self.web_app = tornado.web.Application(
             [
                 url(
-                    r"/api/v1/resolve",
+                    url_path_join(self.base_url, "oauth_callback"),
+                    HubOAuthCallbackHandler,
+                ),
+                url(
+                    url_path_join(self.base_url, r"api/v1/resolve"),
                     ResolveHandler,
                     {"app": self},
                     name="resolve-api",
                 ),
                 url(
-                    r"/repo/(.*?)/(.*)",
+                    url_path_join(self.base_url, r"repo/(.*?)/(.*)"),
                     RepoHandler,
                     {"app": self},
                     name="repo",
                 ),
                 url(
-                    "/",
+                    url_path_join(self.base_url, r"built/(.*?)"),
+                    StaticFileHandler,
+                    {
+                        "path": self.built_sites_root,
+                        "default_filename": "index.html",
+                    },
+                ),
+                url(
+                    self.base_url,
                     IndexHandler,
                     {"app": self},
                     name="app",
                 ),
                 url(
-                    "/(.*)",
+                    url_path_join(self.base_url, "(.*)"),
                     StaticFileHandler,
                     {
                         "path": str(Path(__file__).parent / "generated_static"),
@@ -266,6 +309,7 @@ class JupyterBookPubApp(Application):
                 ),
             ],
             debug=self.debug,
+            cookie_secret=secrets.token_bytes(32),
         )
         self.web_app.listen(self.port)
         await asyncio.Event().wait()
