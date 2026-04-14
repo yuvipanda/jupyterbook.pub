@@ -1,8 +1,5 @@
-import asyncio
-from pathlib import Path
-
 from traitlets import Unicode
-from traitlets.config import Application
+from traitlets.config import Application, Config
 
 
 class Renderer(Application):
@@ -16,8 +13,13 @@ class Renderer(Application):
         "base-url": "Renderer.base_url",
     }
 
+    @classmethod
+    def config_file_name(cls):
+        raise NotImplementedError
+
     async def start(self):
         self.initialize()
+        self.load_config_file(self.config_file_name())
 
         await self.render()
 
