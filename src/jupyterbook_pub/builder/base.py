@@ -1,10 +1,30 @@
-from pathlib import Path
+from traitlets import Unicode
+from traitlets.config import Application, Config
 
-from traitlets.config import LoggingConfigurable
 
+class Renderer(Application):
+    repo_path = Unicode(config=True)
+    built_path = Unicode(config=True)
+    base_url = Unicode(config=True)
 
-class Renderer(LoggingConfigurable):
-    async def render(self, repo_path: Path, built_path: Path, base_url: str):
+    aliases = {
+        **Application.aliases,
+        "repo": "Renderer.repo_path",
+        "dest": "Renderer.built_path",
+        "base-url": "Renderer.base_url",
+    }
+
+    @classmethod
+    def config_file_name(cls):
+        raise NotImplementedError
+
+    async def start(self):
+        self.initialize()
+        self.load_config_file(self.config_file_name())
+
+        await self.render()
+
+    async def render(self):
         """
         Render a checked out repo at repo_path, outputting static assets to built_path
         """

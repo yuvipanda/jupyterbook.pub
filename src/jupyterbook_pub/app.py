@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import mimetypes
 import os
@@ -19,9 +18,10 @@ from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
 from traitlets import default, Bool, Instance, Int, Integer, Type, Unicode
 from traitlets.config import Application
 
+from .cache import make_checkout_cache_key, make_rendered_cache_key
+from .executor import BuildExecutor, LocalProcessExecutor
 from .builder.base import Renderer
 from .builder.book import JupyterBook2Builder
-from .cache import make_checkout_cache_key, make_rendered_cache_key
 
 
 class BaseHandler(RequestHandler):
@@ -31,7 +31,6 @@ class BaseHandler(RequestHandler):
 
 
 class RepoHandler(BaseHandler):
-
     def get_spec_from_request(self, prefix):
         """
         Re-extract spec from request.path.
@@ -54,19 +53,22 @@ class RepoHandler(BaseHandler):
                 # In the future, we can explicitly specify full URL here so we
                 # can support other kinds of domains too
                 base_url = f"/repo/{raw_repo_spec}"
-                built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(
-                    repo, base_url
-                )
+                root_build_path = Path(self.app.built_sites_root)
+                root_build_path.mkdir(exist_ok=True)
+
+                built_path = root_build_path / make_rendered_cache_key(repo, base_url)
 
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
 
                 if not repo_path.exists():
-                    print(f"Fetching {repo}...\n")
+                    self.log.info(f"Fetching {repo}...\n")
                     await fetch(repo, repo_path)
-                    print(f"Fetched {repo}")
+                    self.log.info(f"Fetched {repo}")
 
                 if not built_path.exists():
-                    await self.app.renderer.render(repo_path, built_path, base_url)
+                    await self.app.executor.execute(
+                        self.app.builder_class, repo_path, built_path, base_url
+                    )
                 # This is a *sure* path traversal attack
                 full_path = built_path / path
                 if full_path.is_dir():
@@ -173,14 +175,6 @@ class JupyterBookPubApp(Application):
 
     resolver_cache = Instance(klass=TTLCache)
 
-    renderer_class = Type(
-        JupyterBook2Builder,
-        klass=Renderer,
-        config=True,
-        help="Renderer to use for this installation",
-    )
-    renderer = Instance(klass=Renderer)
-
     site_title = Unicode("JupyterBook.pub", help="Title of the website", config=True)
 
     site_heading = Unicode(
@@ -192,6 +186,21 @@ class JupyterBookPubApp(Application):
         help="Subheading of the website",
         config=True,
     )
+
+    builder_class = Type(
+        JupyterBook2Builder,
+        klass=Renderer,
+        config=True,
+        help="Builder to use for this installation",
+    )
+
+    executor_class = Type(
+        LocalProcessExecutor,
+        klass=BuildExecutor,
+        config=True,
+        help="Executor to use for this installation",
+    )
+    executor = Instance(klass=BuildExecutor)
 
     config_file = Unicode(
         "jupyterbook_pub_config.py", help="The config file to load", config=True
@@ -232,7 +241,7 @@ class JupyterBookPubApp(Application):
             maxsize=self.resolver_cache_max_size, ttl=10 * 60
         )
 
-        self.renderer = self.renderer_class(parent=self)
+        self.executor = self.executor_class(parent=self)
 
     async def start(self) -> None:
         self.initialize()
