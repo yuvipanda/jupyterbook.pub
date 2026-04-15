@@ -11,7 +11,6 @@ import contextlib
 import json
 import pathlib
 import re
-import sys
 import urllib.parse
 import shlex
 import tempfile
@@ -562,6 +561,7 @@ class JupyterBook2Builder(Renderer):
             await self.render_site_to_html(
                 source_or_ast_path, template_path, built_path, base_url
             )
+            await asyncio.sleep(20)
             return
 
         # Source is a Jupyter Book
@@ -575,13 +575,16 @@ class JupyterBook2Builder(Renderer):
 
         # Otherwise try build from source
         if self.allow_source_builds:
-            ast_path, template_path = await self.build_site_from_book(
-                source_or_ast_path
-            )
-            await self.render_site_to_html(
-                ast_path, template_path, built_path, base_url
-            )
-            return
+            with tempfile.TemporaryDirectory() as _tmpdir:
+                # Copy the source to somewhere writeable
+                source_path = Path(_tmpdir)
+                shutil.copytree(source_or_ast_path, source_path, dirs_exist_ok=True)
+
+                ast_path, template_path = await self.build_site_from_book(source_path)
+                await self.render_site_to_html(
+                    ast_path, template_path, built_path, base_url
+                )
+                return
         else:
             raise RuntimeError("Not permitted to build AST from project sources")
 
