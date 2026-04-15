@@ -554,6 +554,8 @@ class JupyterBook2Builder(Renderer):
         built_path = Path(self.built_path)
         base_url = self.base_url
 
+        self.log.info("Building book")
+
         # Source is AST, build HTML from it
         if (source_or_ast_path / "config.json").exists():
             template_path = await self.ensure_default_template_installed()

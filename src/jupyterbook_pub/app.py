@@ -60,9 +60,9 @@ class RepoHandler(BaseHandler):
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
 
                 if not repo_path.exists():
-                    print(f"Fetching {repo}...\n")
+                    self.log.info(f"Fetching {repo}...\n")
                     await fetch(repo, repo_path)
-                    print(f"Fetched {repo}")
+                    self.log.info(f"Fetched {repo}")
 
                 if not built_path.exists():
                     await self.app.executor.execute(
