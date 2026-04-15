@@ -31,14 +31,19 @@ class BuildExecutor(LoggingConfigurable):
         :param app: main Application
         :param builder_class: builder to configure
         """
+        config_file_name = f"{builder_class.config_file_name()}.json"
         for _path in app.loaded_config_files:
             path = Path(_path)
 
             # For now, only JSON (easier to reason about)
-            full_path = path.parent / f"{builder_class.config_file_name()}.json"
+            full_path = path.parent / config_file_name
 
             if full_path.exists():
-                return full_path
+                return full_path.absolute()
+
+        this_dir_config = (Path.cwd() / config_file_name).absolute()
+        if this_dir_config.exists():
+            return this_dir_config
 
 
 class ProcessFailedError(Exception): ...
@@ -158,11 +163,13 @@ class DockerExecutor(ProcessBasedExecutor):
             )
             extra_flags.extend(["--env", "PYTHONPATH=/opt/packages/"])
 
+        working_dir = Path("/tmp")
+
         # Find config file for builder, and mount it
         builder_config_path = self.resolve_config_file(self.parent, builder_class)
         if builder_config_path is not None:
             # TODO nicer way to locate this explicitly
-            dest_config_path = builder_config_path.name
+            dest_config_path = working_dir / builder_config_path.name
             mounts.append(
                 f"type=bind,src={builder_config_path},dst={dest_config_path},readonly"
             )
@@ -173,6 +180,8 @@ class DockerExecutor(ProcessBasedExecutor):
             self.engine,
             "run",
             "--rm",
+            "--workdir",
+            working_dir,
             *(f for m in mounts for f in ("--mount", m)),
             *extra_flags,
             # For now, disable IPV6
