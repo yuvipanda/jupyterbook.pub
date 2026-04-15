@@ -45,19 +45,24 @@ class ProcessFailedError(Exception): ...
 
 
 class ProcessBasedExecutor(BuildExecutor):
+    # Ensure that concurrent processes don't interleave around proc spawning
+    # and PID writing. This is aggressive — we should really map this by path
+    _spawn_pid_lock = asyncio.Lock()
+
     async def run_process(
         self,
         args: list[str],
         log_output: bool = True,
         pid_file_path: Path = None,
     ):
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        if pid_file_path is not None:
-            pid_file_path.write_text(str(proc.pid))
+        async with self._spawn_pid_lock:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            if pid_file_path is not None:
+                pid_file_path.write_text(str(proc.pid))
 
         stdout, stderr = await proc.communicate()
 
