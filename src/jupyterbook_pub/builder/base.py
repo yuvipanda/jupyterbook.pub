@@ -8,6 +8,7 @@ class Renderer(Application):
     base_url = Unicode(config=True)
 
     aliases = {
+        **Application.aliases,
         "repo": "Renderer.repo_path",
         "dest": "Renderer.built_path",
         "base-url": "Renderer.base_url",

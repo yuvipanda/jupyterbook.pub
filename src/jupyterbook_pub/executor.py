@@ -3,6 +3,7 @@ from traitlets.config import Application, LoggingConfigurable
 import asyncio
 import sys
 from pathlib import Path
+import logging
 
 from .builder.base import Renderer
 
@@ -17,9 +18,19 @@ class BuildExecutor(LoggingConfigurable):
     def resolve_config_file(
         cls, app: Application, builder_class: type[Renderer]
     ) -> Path | None:
+        """
+        Resolve the config file name for a particular builder with respect
+        to existing config files.
+
+        Return the path to the found file if detected.
+
+        :param app: main Application
+        :param builder_class: builder to configure
+        """
         for _path in app.loaded_config_files:
             path = Path(_path)
 
+            # For now, only JSON (easier to reason about)
             full_path = path.parent / f"{builder_class.config_file_name()}.json"
 
             if full_path.exists():
@@ -58,24 +69,25 @@ class DockerExecutor(BuildExecutor):
         built_path.mkdir(parents=True, exist_ok=True)
         repo_mount_path = "/srv/source"
         dest_mount_path = "/srv/build"
+
         mounts = [
-            "--mount",
             f"type=bind,src={repo_path},dst={repo_mount_path}",
-            "--mount",
             f"type=bind,src={built_path},dst={dest_mount_path}",
         ]
+
+        # Debug
+        this_package_path = Path(__file__).parent
+        mounts.append(
+            f"type=bind,src={this_package_path},dst=/opt/packages/jupyterbook_pub"
+        )
+        extra_flags = ["--env", "PYTHONPATH=/opt/packages/"]
 
         # Find config file for builder, and mount it
         builder_config_path = self.resolve_config_file(self.parent, builder_class)
         if builder_config_path is not None:
             # TODO nicer way to locate this explicitly
             dest_config_path = builder_config_path.name
-            mounts.extend(
-                (
-                    "--mount",
-                    f"type=bind,src={builder_config_path},dst={dest_config_path}",
-                )
-            )
+            mounts.append(f"type=bind,src={builder_config_path},dst={dest_config_path}")
 
         builder_module = builder_class.__module__
 
@@ -83,7 +95,8 @@ class DockerExecutor(BuildExecutor):
             self.engine,
             "run",
             "--rm",
-            *mounts,
+            *(f for m in mounts for f in ("--mount", m)),
+            *extra_flags,
             # For now, disable IPV6
             "--sysctl",
             "net.ipv6.conf.all.disable_ipv6=1",
@@ -97,6 +110,8 @@ class DockerExecutor(BuildExecutor):
             dest_mount_path,
             "--base-url",
             base_url,
+            "--log-level",
+            str(logging.INFO),
         ]
         await self.run_process(cmd)
 
