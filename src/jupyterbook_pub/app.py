@@ -53,9 +53,10 @@ class RepoHandler(BaseHandler):
                 # In the future, we can explicitly specify full URL here so we
                 # can support other kinds of domains too
                 base_url = f"/repo/{raw_repo_spec}"
-                built_path = Path(self.app.built_sites_root) / make_rendered_cache_key(
-                    repo, base_url
-                )
+                root_build_path = Path(self.app.built_sites_root)
+                root_build_path.mkdir(exist_ok=True)
+
+                built_path = root_build_path / make_rendered_cache_key(repo, base_url)
 
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
 

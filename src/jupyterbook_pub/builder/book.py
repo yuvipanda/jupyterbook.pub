@@ -4,6 +4,7 @@ import asyncio
 import dataclasses
 import shutil
 from pathlib import Path
+import tempfile
 from typing import Optional
 
 from traitlets import default, Bool, Instance
@@ -191,6 +192,7 @@ class JupyterBook2Builder(Renderer):
             await self.ast_renderer.render_html(
                 source_or_ast_path, built_path, base_url=base_url
             )
+            await asyncio.sleep(20)
             return
 
         # Source is a Jupyter Book
@@ -204,13 +206,16 @@ class JupyterBook2Builder(Renderer):
 
         # Otherwise try build from source
         if self.allow_source_builds:
-            ast_path, template_path = await self.build_site_from_book(
-                source_or_ast_path
-            )
-            await self.ast_renderer.render_html(
-                ast_path, built_path, template_path, base_url
-            )
-            return
+            with tempfile.TemporaryDirectory() as _tmpdir:
+                # Copy the source to somewhere writeable
+                source_path = Path(_tmpdir)
+                shutil.copytree(source_or_ast_path, source_path, dirs_exist_ok=True)
+
+                ast_path, template_path = await self.build_site_from_book(source_path)
+                await self.ast_renderer.render_html(
+                    ast_path, built_path, template_path, base_url
+                )
+                return
         else:
             raise RuntimeError("Not permitted to build AST from project sources")
 
