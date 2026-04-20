@@ -154,15 +154,6 @@ class JupyterBookPubApp(Application):
     def _default_built_sites_root(self):
         return str(Path(self.persistent_path) / "built_sites")
 
-    templates_root = Unicode(
-        help="Path to download MyST templates to. Created if it doesn't exist",
-        config=True,
-    )
-
-    @default("templates_root")
-    def _default_templates_root(self):
-        return str(Path(self.persistent_path) / "templates")
-
     resolver_cache_ttl_seconds = Integer(
         10 * 60,
         help="How long to cache successful resolver results (in seconds)",
