@@ -39,6 +39,8 @@ class JupyterBook2Builder(Renderer):
     If the AST does not exist, attempt a source build.
     """
 
+    name = Unicode("jupyterbook2builder")
+
     @classmethod
     def config_file_name(cls):
         return "jupyter_book_2_builder"

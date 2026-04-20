@@ -21,6 +21,7 @@ class Renderer(Application):
     async def start(self):
         self.initialize()
         self.load_config_file(self.config_file_name())
+        self.load_config_environ()
 
         await self.render()
 

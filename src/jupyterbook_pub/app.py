@@ -122,6 +122,7 @@ class IndexHandler(BaseHandler):
 
 
 class JupyterBookPubApp(Application):
+    name = Unicode("jupyterbook_pub")
     debug = Bool(True, help="Turn on debug mode", config=True)
 
     port = Int(
@@ -215,6 +216,8 @@ class JupyterBookPubApp(Application):
     def initialize(self, argv=None) -> None:
         super().initialize(argv)
         self.load_config_file(self.config_file)
+        self.load_config_environ()
+
         if self.debug:
             self.log_level = logging.DEBUG
         tornado.options.options.logging = logging.getLevelName(self.log_level)

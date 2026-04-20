@@ -20,5 +20,18 @@ RUN cd js && \
     npm run build
 RUN python3 -m pip install /opt/jupyterbook.pub
 
+# Install default book theme
+RUN mkdir -p /opt/templates && \
+    cd /opt/templates && \
+    curl -L https://github.com/myst-templates/book-theme/archive/43b78aca9895f5a7929bf7f5591791a4bf1adcfb.zip -o theme.zip && \
+    unzip theme.zip && \
+    rm theme.zip && \
+    mkdir -p site/myst/ && \
+    mv book-theme* site/myst/book-theme && \
+    cd site/myst/book-theme && \
+    npm ci --ignore-scripts
+ENV JUPYTERBOOK2BUILDER__templates_path=/opt/templates
+
+
 # Overriden for dokku
 CMD ["python3", "-m", "jupyterbook_pub.app"]
