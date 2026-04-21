@@ -1,6 +1,7 @@
 from traitlets import Bool, Unicode
 from traitlets.config import Application, LoggingConfigurable
 import asyncio
+import contextlib
 import sys
 from pathlib import Path
 from typing import Callable
@@ -9,19 +10,13 @@ import tempfile
 import os
 import shutil
 
-from .builder.base import Renderer
+from .builder.base import Renderer, ReservedCommands
+
+
+class ProcessFailedError(Exception): ...
 
 
 class BuildExecutor(LoggingConfigurable):
-    async def execute(
-        self,
-        builder_class: type[Renderer],
-        repo_path: Path,
-        built_path: Path,
-        base_url: str,
-    ):
-        raise NotImplementedError
-
     @classmethod
     def resolve_config_file(
         cls, app: Application, builder_class: type[Renderer]
@@ -49,56 +44,20 @@ class BuildExecutor(LoggingConfigurable):
         if this_dir_config.exists():
             return this_dir_config
 
+    async def execute(
+        self,
+        builder_class: type[Renderer],
+        repo_path: Path,
+        dest_path: Path,
+        base_url: str,
+    ):
+        raise NotImplementedError
 
-class ProcessFailedError(Exception): ...
 
-
-class ProcessBasedExecutor(BuildExecutor):
+class PIDLockingExecutor(BuildExecutor):
     # Ensure that concurrent processes don't interleave around proc spawning
     # and PID writing. This is aggressive — we should really map this by path
-    _spawn_pid_lock = asyncio.Lock()
-
-    async def run_process(
-        self,
-        args: list[str],
-        log_output: bool = True,
-        pid_file_path: Path = None,
-    ):
-        async with self._spawn_pid_lock:
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            if pid_file_path is not None:
-                pid_file_path.write_text(str(proc.pid))
-
-        stdout, stderr = await proc.communicate()
-
-        pid_file_path.unlink()
-
-        if log_output:
-            for line in stdout.decode().splitlines():
-                self.log.info(line)
-
-            for line in stderr.decode().splitlines():
-                self.log.error(line)
-
-        if proc.returncode != 0:
-            raise ProcessFailedError("An error occurred whilst invoking process")
-
-    async def wait_for_child_pidfile(self, pid_file_path: Path):
-        pid = int(pid_file_path.read_text().strip())
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            os.waitid,
-            os.P_PID,
-            pid,
-            # Allow others to wait on process status, and wait for exit or stopped
-            os.WNOWAIT | os.WEXITED | os.WSTOPPED,
-        )
+    _pid_lock_operation = asyncio.Lock()
 
     def prepare_process_cmd(
         self,
@@ -107,6 +66,11 @@ class ProcessBasedExecutor(BuildExecutor):
         build_path: Path,
         base_url: str,
     ) -> list[str]:
+        raise NotImplementedError
+
+    def resolve_entrypoint(
+        self, entrypoint: tuple[ReservedCommands | str, ...]
+    ) -> tuple[str, ...]:
         raise NotImplementedError
 
     async def execute(
@@ -122,7 +86,11 @@ class ProcessBasedExecutor(BuildExecutor):
         # PID file with same name as dest
         pid_file_path = dest_path.with_suffix(".pid")
 
-        if pid_file_path.exists():
+        # Wait for lock to ensure we can test the PID file existence
+        async with self._pid_lock_operation:
+            pid_file_exists = pid_file_path.exists()
+
+        if pid_file_exists:
             self.log.info("Waiting for concurrent build to finish")
             await self.wait_for_child_pidfile(pid_file_path)
         else:
@@ -130,13 +98,63 @@ class ProcessBasedExecutor(BuildExecutor):
             cmd = self.prepare_process_cmd(
                 builder_class, repo_path, build_path, base_url
             )
-            # TODO: race condition here between setup and write?
-            await self.run_process(cmd, pid_file_path=pid_file_path)
-            shutil.copytree(build_path, dest_path, dirs_exist_ok=True)
+            async with self.run_process(cmd, pid_file_path=pid_file_path):
+                shutil.move(build_path, dest_path)
             self.log.info("Build completed")
 
+    @contextlib.asynccontextmanager
+    async def run_process(
+        self,
+        args: list[str],
+        *,
+        pid_file_path: Path,
+        log_output: bool = True,
+    ):
+        # Lock whilst creating the PID file
+        async with self._pid_lock_operation:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            # Create PID file
+            pid_file_path.write_text(str(proc.pid))
 
-class DockerExecutor(ProcessBasedExecutor):
+        stdout, stderr = await proc.communicate()
+
+        if log_output:
+            for line in stdout.decode().splitlines():
+                self.log.info(line)
+
+            for line in stderr.decode().splitlines():
+                self.log.error(line)
+
+        try:
+            # If there's an error, surface it
+            if proc.returncode != 0:
+                raise ProcessFailedError("An error occurred whilst invoking process")
+            # Otherwise, yield control to the context manager
+            yield
+        finally:
+            # Destroy PID file
+            async with self._pid_lock_operation:
+                pid_file_path.unlink()
+
+    async def wait_for_child_pidfile(self, pid_file_path: Path):
+        pid = int(pid_file_path.read_text().strip())
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            os.waitid,
+            os.P_PID,
+            pid,
+            # Allow others to wait on process status, and wait for exit or stopped
+            os.WNOWAIT | os.WEXITED | os.WSTOPPED,
+        )
+
+
+class DockerExecutor(PIDLockingExecutor):
     debug = Bool(False, config=True)
     engine = Unicode("docker", config=True)
     image = Unicode("jupyterbook-pub:latest", allow_none=False, config=True)
@@ -178,8 +196,6 @@ class DockerExecutor(ProcessBasedExecutor):
                 f"type=bind,src={builder_config_path},dst={dest_config_path},readonly"
             )
 
-        builder_module = builder_class.__module__
-
         invocation_cmd = [
             self.engine,
             "run",
@@ -194,22 +210,17 @@ class DockerExecutor(ProcessBasedExecutor):
             self.image,
         ]
         builder_cmd = [
-            "python",
-            "-m",
-            builder_module,
-            "--repo",
-            repo_mount_path,
-            "--dest",
-            dest_mount_path,
-            "--base-url",
-            base_url,
-            "--log-level",
-            str(logging.INFO),
+            str(p)
+            for p in builder_class.entrypoint(
+                repo_mount_path,
+                dest_mount_path,
+                base_url,
+            )
         ]
         return [*invocation_cmd, *builder_cmd]
 
 
-class LocalProcessExecutor(ProcessBasedExecutor):
+class LocalProcessExecutor(PIDLockingExecutor):
     def prepare_process_cmd(
         self,
         builder_class: type[Renderer],
@@ -217,16 +228,9 @@ class LocalProcessExecutor(ProcessBasedExecutor):
         build_path: Path,
         base_url: str,
     ):
-        builder_module = builder_class.__module__
-
-        return [
-            sys.executable,
-            "-m",
-            builder_module,
-            "--repo",
-            repo_path,
-            "--dest",
-            build_path,
-            "--base-url",
-            base_url,
-        ]
+        return tuple(
+            [
+                sys.executable if p is ReservedCommands.python else str(p)
+                for p in builder_class.entrypoint(repo_path, build_path, base_url)
+            ]
+        )

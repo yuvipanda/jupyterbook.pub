@@ -1,8 +1,27 @@
 from traitlets import Unicode
-from traitlets.config import Application, Config
+from traitlets.config import Application
+from enum import StrEnum
+import pathlib
+import logging
 
 
-class Renderer(Application):
+class ReservedCommands(StrEnum):
+    python = "python"
+
+
+class Renderer:
+    @classmethod
+    def config_file_name(cls):
+        raise NotImplementedError
+
+    @classmethod
+    def entrypoint(
+        cls, repo_path: pathlib.Path, build_path: pathlib.Path, base_url: str
+    ) -> tuple[ReservedCommands | str, ...]:
+        raise NotImplementedError
+
+
+class PythonRenderer(Renderer, Application):
     repo_path = Unicode(config=True)
     built_path = Unicode(config=True)
     base_url = Unicode(config=True)
@@ -15,8 +34,22 @@ class Renderer(Application):
     }
 
     @classmethod
-    def config_file_name(cls):
-        raise NotImplementedError
+    def entrypoint(
+        cls, repo_path: pathlib.Path, build_path: pathlib.Path, base_url: str
+    ) -> tuple[ReservedCommands | str, ...]:
+        return (
+            ReservedCommands.python,
+            "-m",
+            cls.__module__,
+            "--repo",
+            repo_path,
+            "--dest",
+            build_path,
+            "--base-url",
+            base_url,
+            "--log-level",
+            str(logging.INFO),
+        )
 
     async def start(self):
         self.initialize()
