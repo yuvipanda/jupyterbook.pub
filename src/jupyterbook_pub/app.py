@@ -122,12 +122,10 @@ class IndexHandler(BaseHandler):
 
 
 class JupyterBookPubApp(Application):
-    name = Unicode("jupyterbook_pub")
+    name = Unicode("jupyterbook-pub-app")
     debug = Bool(True, help="Turn on debug mode", config=True)
 
-    port = Int(
-        int(os.environ.get("PORT", "9200")), help="Port to listen on", config=True
-    )
+    port = Int(9200, help="Port to listen on", config=True)
     persistent_path = Unicode(
         help="Base path for persistent files like repo checkouts, and template downloads. Created if it doesn't exist",
         config=True,
@@ -215,6 +213,7 @@ class JupyterBookPubApp(Application):
     @override
     def initialize(self, argv=None) -> None:
         super().initialize(argv)
+
         self.load_config_file(self.config_file)
         self.load_config_environ()
 
