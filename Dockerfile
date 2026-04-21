@@ -13,7 +13,7 @@ ENV PATH=/root/.local/bin:${PATH}
 RUN mkdir -p /opt/jupyterbook.pub
 WORKDIR /opt/jupyterbook.pub
 
-COPY . /opt/jupyterbook.pub
+COPY . /opt/jupyterbook.pub/
 
 RUN cd js && \
     npm install && \

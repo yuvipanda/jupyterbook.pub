@@ -1,13 +1,9 @@
-from traitlets import Bool, Unicode
+from traitlets import Bool, Dict, Instance, Unicode
 from traitlets.config import Application, LoggingConfigurable
 import asyncio
-import contextlib
 import sys
 from pathlib import Path
-from typing import Callable
-import logging
 import tempfile
-import os
 import shutil
 
 from .builder.base import Renderer, ReservedCommands
@@ -54,10 +50,18 @@ class BuildExecutor(LoggingConfigurable):
         raise NotImplementedError
 
 
-class PIDLockingExecutor(BuildExecutor):
+class LockingExecutor(BuildExecutor):
+    """
+    Build executor that relies on local processes, using events for concurrency
+    control.
+    """
+
     # Ensure that concurrent processes don't interleave around proc spawning
     # and PID writing. This is aggressive — we should really map this by path
-    _pid_lock_operation = asyncio.Lock()
+    _build_events = Dict(
+        key_trait=Instance(Path),
+        value_trait=Instance(asyncio.Event),
+    )
 
     def prepare_process_cmd(
         self,
@@ -66,11 +70,6 @@ class PIDLockingExecutor(BuildExecutor):
         build_path: Path,
         base_url: str,
     ) -> list[str]:
-        raise NotImplementedError
-
-    def resolve_entrypoint(
-        self, entrypoint: tuple[ReservedCommands | str, ...]
-    ) -> tuple[str, ...]:
         raise NotImplementedError
 
     async def execute(
@@ -83,42 +82,48 @@ class PIDLockingExecutor(BuildExecutor):
         # Temporary build path
         build_path = tempfile.mkdtemp()
 
-        # PID file with same name as dest
-        pid_file_path = dest_path.with_suffix(".pid")
-
-        # Wait for lock to ensure we can test the PID file existence
-        async with self._pid_lock_operation:
-            pid_file_exists = pid_file_path.exists()
-
-        if pid_file_exists:
+        try:
+            build_finished_event = self._build_events[dest_path]
+        except KeyError:
             self.log.info("Waiting for concurrent build to finish")
-            await self.wait_for_child_pidfile(pid_file_path)
-        else:
+            await build_finished_event.wait()
+            return
+
+        # The build path doesn't exist, so this is either the first build or a pending
+        # build
+        build_finished_event = self._build_events[dest_path] = asyncio.Event()
+
+        try:
             self.log.info("Running first build")
             cmd = self.prepare_process_cmd(
                 builder_class, repo_path, build_path, base_url
             )
-            async with self.run_process(cmd, pid_file_path=pid_file_path):
-                shutil.move(build_path, dest_path)
-            self.log.info("Build completed")
 
-    @contextlib.asynccontextmanager
+            await self.run_process(cmd)
+
+            # Atomic move
+            shutil.move(build_path, dest_path)
+            self.log.info("Build completed")
+        finally:
+            # Signal to other consumers, even if the build failed
+            # (we don't want people waiting on never-to-finish builds)
+            build_finished_event.set()
+
+            # Clear event
+            self._build_events.pop(dest_path)
+
     async def run_process(
         self,
         args: list[str],
         *,
-        pid_file_path: Path,
         log_output: bool = True,
     ):
         # Lock whilst creating the PID file
-        async with self._pid_lock_operation:
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            # Create PID file
-            pid_file_path.write_text(str(proc.pid))
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
 
         stdout, stderr = await proc.communicate()
 
@@ -129,32 +134,12 @@ class PIDLockingExecutor(BuildExecutor):
             for line in stderr.decode().splitlines():
                 self.log.error(line)
 
-        try:
-            # If there's an error, surface it
-            if proc.returncode != 0:
-                raise ProcessFailedError("An error occurred whilst invoking process")
-            # Otherwise, yield control to the context manager
-            yield
-        finally:
-            # Destroy PID file
-            async with self._pid_lock_operation:
-                pid_file_path.unlink()
-
-    async def wait_for_child_pidfile(self, pid_file_path: Path):
-        pid = int(pid_file_path.read_text().strip())
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            os.waitid,
-            os.P_PID,
-            pid,
-            # Allow others to wait on process status, and wait for exit or stopped
-            os.WNOWAIT | os.WEXITED | os.WSTOPPED,
-        )
+        # If there's an error, surface it
+        if proc.returncode != 0:
+            raise ProcessFailedError("An error occurred whilst invoking process")
 
 
-class DockerExecutor(PIDLockingExecutor):
+class DockerExecutor(LockingExecutor):
     debug = Bool(False, config=True)
     engine = Unicode("docker", config=True)
     image = Unicode("jupyterbook-pub:latest", allow_none=False, config=True)
@@ -220,7 +205,7 @@ class DockerExecutor(PIDLockingExecutor):
         return [*invocation_cmd, *builder_cmd]
 
 
-class LocalProcessExecutor(PIDLockingExecutor):
+class LocalProcessExecutor(LockingExecutor):
     def prepare_process_cmd(
         self,
         builder_class: type[Renderer],

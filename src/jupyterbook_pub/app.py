@@ -56,8 +56,6 @@ class RepoHandler(BaseHandler):
                 root_build_path = Path(self.app.built_sites_root)
                 root_build_path.mkdir(exist_ok=True)
 
-                built_path = root_build_path / make_rendered_cache_key(repo, base_url)
-
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
 
                 if not repo_path.exists():
@@ -65,6 +63,7 @@ class RepoHandler(BaseHandler):
                     await fetch(repo, repo_path)
                     self.log.info(f"Fetched {repo}")
 
+                built_path = root_build_path / make_rendered_cache_key(repo, base_url)
                 if not built_path.exists():
                     await self.app.executor.execute(
                         self.app.builder_class, repo_path, built_path, base_url
