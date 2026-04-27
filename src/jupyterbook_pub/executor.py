@@ -85,32 +85,32 @@ class LockingExecutor(BuildExecutor):
         try:
             build_finished_event = self._build_events[dest_path]
         except KeyError:
+            # The build path doesn't exist, so this is either the first build or a pending
+            # build
+            build_finished_event = self._build_events[dest_path] = asyncio.Event()
+
+            try:
+                self.log.info("Running first build")
+                cmd = self.prepare_process_cmd(
+                    builder_class, repo_path, build_path, base_url
+                )
+
+                await self.run_process(cmd)
+
+                # Atomic move
+                shutil.move(build_path, dest_path)
+                self.log.info("Build completed")
+            finally:
+                # Signal to other consumers, even if the build failed
+                # (we don't want people waiting on never-to-finish builds)
+                build_finished_event.set()
+
+                # Clear event
+                self._build_events.pop(dest_path)
+        else:
             self.log.info("Waiting for concurrent build to finish")
             await build_finished_event.wait()
             return
-
-        # The build path doesn't exist, so this is either the first build or a pending
-        # build
-        build_finished_event = self._build_events[dest_path] = asyncio.Event()
-
-        try:
-            self.log.info("Running first build")
-            cmd = self.prepare_process_cmd(
-                builder_class, repo_path, build_path, base_url
-            )
-
-            await self.run_process(cmd)
-
-            # Atomic move
-            shutil.move(build_path, dest_path)
-            self.log.info("Build completed")
-        finally:
-            # Signal to other consumers, even if the build failed
-            # (we don't want people waiting on never-to-finish builds)
-            build_finished_event.set()
-
-            # Clear event
-            self._build_events.pop(dest_path)
 
     async def run_process(
         self,
