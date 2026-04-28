@@ -114,6 +114,7 @@ class BuiltRepoHandler(AppMixin, NoXSRFMixin, HubOAuthenticated, StaticHandler):
 
                     return self.redirect(build_url)
                 else:
+                    # Rewrite URL against build cache key
                     content_url = url_path_join(build_cache_key, tail)
                     return await super().get(content_url)
 
