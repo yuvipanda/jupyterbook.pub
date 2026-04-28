@@ -194,7 +194,6 @@ class JupyterBook2Builder(PythonRenderer):
             await self.ast_renderer.render_html(
                 source_or_ast_path, built_path, base_url=base_url
             )
-            await asyncio.sleep(20)
             return
 
         # Source is a Jupyter Book
