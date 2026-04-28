@@ -127,15 +127,18 @@ class LockingExecutor(BuildExecutor):
 
         stdout, stderr = await proc.communicate()
 
+        is_error = proc.returncode != 0
+
         if log_output:
             for line in stdout.decode().splitlines():
                 self.log.info(line)
 
+            log_stderr = self.log.error if is_error else self.log.debug
             for line in stderr.decode().splitlines():
-                self.log.error(line)
+                log_stderr(line)
 
         # If there's an error, surface it
-        if proc.returncode != 0:
+        if is_error:
             raise ProcessFailedError("An error occurred whilst invoking process")
 
 
