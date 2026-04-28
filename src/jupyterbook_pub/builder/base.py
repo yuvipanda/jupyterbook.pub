@@ -12,12 +12,21 @@ class ReservedCommands(StrEnum):
 class Renderer:
     @classmethod
     def config_file_name(cls):
+        """
+        Stem of config file to search for when running this renderer as an app.
+        """
         raise NotImplementedError
 
     @classmethod
     def entrypoint(
         cls, repo_path: pathlib.Path, build_path: pathlib.Path, base_url: str
     ) -> tuple[ReservedCommands | str, ...]:
+        """
+        Tuple of executable entrypoint items required to launch this renderer.
+
+        Consumers should substitute ReservedCommands instances with appropriate values,
+        e.g. python → sys.executable.
+        """
         raise NotImplementedError
 
 
