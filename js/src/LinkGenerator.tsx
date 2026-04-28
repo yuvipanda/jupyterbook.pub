@@ -3,11 +3,8 @@ import copy from "copy-to-clipboard";
 import { Answer, resolve } from "./resolver";
 import { useDebounce } from "use-debounce";
 
-function makeShareableLink(repoUrl: string) {
-    // FIXME: I am committing a cardinal sin here that makes it difficult to host this under subpaths
-    // but how do I get this information in here otherwise? I do not know. Forgive me for my sins
-    const baseUrl = window.location.origin;
-    return new URL("repo/" + encodeURIComponent(repoUrl) + "/", baseUrl);
+function makeShareableLink(baseUrl: string, repoUrl: string) {
+    return new URL(`${baseUrl}repo/${encodeURIComponent(repoUrl)}/`, window.location.origin);
 }
 
 function normalizeRepoUrl(repoUrl: string) {
@@ -28,7 +25,7 @@ function normalizeRepoUrl(repoUrl: string) {
     }
 }
 
-export function LinkGenerator() {
+export function LinkGenerator({ baseUrl }: { baseUrl: string }) {
     const [repoUrl, setRepoUrl] = useState<string>("");
     const [shareUrl, setShareUrl] = useState<URL | null>(null);
     const [resolvedRepo, setResolvedRepo] = useState<Answer | null>(null);
@@ -41,7 +38,7 @@ export function LinkGenerator() {
                 return;
             }
 
-            const answer = await resolve(debouncedRepoUrl);
+            const answer = await resolve(baseUrl, debouncedRepoUrl);
             if (answer === null) {
                 setResolvedRepo(null);
             } else {
@@ -67,13 +64,15 @@ export function LinkGenerator() {
                                     const normalizedRepoUrl =
                                         normalizeRepoUrl(rawRepoUrl);
                                     setRepoUrl(normalizedRepoUrl);
-                                    if (normalizedRepoUrl === null) {
-                                        setShareUrl(null);
-                                    } else {
-                                        setShareUrl(
-                                            makeShareableLink(normalizedRepoUrl),
-                                        );
-                                    }
+
+                                    setShareUrl(
+                                        normalizeRepoUrl === null
+                                            ? null
+                                            : makeShareableLink(
+                                                  baseUrl,
+                                                  normalizedRepoUrl,
+                                              ),
+                                    );
                                 }}
                             ></input>
                             <label htmlFor="repoUrl">

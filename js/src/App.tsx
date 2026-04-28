@@ -4,10 +4,12 @@ export function App({
     title,
     heading,
     subheading,
+    baseUrl,
 }: {
     title: string;
     heading: string;
     subheading: string;
+    baseUrl: string;
 }) {
     return (
         <>
@@ -21,7 +23,7 @@ export function App({
                             File Issues
                         </a>
                     </div>
-                    <LinkGenerator />
+                    <LinkGenerator baseUrl={baseUrl} />
                 </div>
             </div>
         </>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import mimetypes
+import secrets
 import os
 from pathlib import Path
 from typing import override
@@ -14,14 +15,20 @@ from repoproviders import resolve
 from repoproviders.fetchers.fetcher import fetch
 from repoproviders.resolvers import to_json
 from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists
-from tornado.web import HTTPError, RequestHandler, StaticFileHandler, url
-from traitlets import default, Bool, Instance, Int, Integer, Type, Unicode
+from tornado.web import (
+    HTTPError,
+    RequestHandler,
+    StaticFileHandler,
+    url,
+)
+from traitlets import default, validate, Bool, Instance, Int, Integer, Type, Unicode
 from traitlets.config import Application
 
 from .cache import make_checkout_cache_key, make_rendered_cache_key
 from .executor import BuildExecutor, LocalProcessExecutor
 from .builder.base import Renderer
 from .builder.book import JupyterBook2Builder
+from .utils import url_path_join
 
 
 class BaseHandler(RequestHandler):
@@ -42,7 +49,8 @@ class RepoHandler(BaseHandler):
         return spec
 
     async def get(self, repo_spec: str, path: str):
-        spec = self.get_spec_from_request("/repo/")
+        prefix = url_path_join(self.app.base_url, "/repo/")
+        spec = self.get_spec_from_request(prefix)
 
         raw_repo_spec, _ = spec.split("/", 1)
         last_answer = await self.app.resolve(repo_spec)
@@ -50,12 +58,6 @@ class RepoHandler(BaseHandler):
             raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
             case Exists(repo) | MaybeExists(repo):
-                # In the future, we can explicitly specify full URL here so we
-                # can support other kinds of domains too
-                base_url = f"/repo/{raw_repo_spec}"
-                root_build_path = Path(self.app.built_sites_root)
-                root_build_path.mkdir(exist_ok=True)
-
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
 
                 if not repo_path.exists():
@@ -63,13 +65,21 @@ class RepoHandler(BaseHandler):
                     await fetch(repo, repo_path)
                     self.log.info(f"Fetched {repo}")
 
-                built_path = root_build_path / make_rendered_cache_key(repo, base_url)
-                if not built_path.exists():
+                root_build_path = Path(self.app.built_sites_root)
+                root_build_path.mkdir(exist_ok=True)
+
+                build_cache_key = make_rendered_cache_key(repo, self.app.base_url)
+                base_url = url_path_join(self.app.base_url, "repo", raw_repo_spec)
+                build_path = root_build_path / build_cache_key
+
+                # If the built path exists, redirect there!
+                if not build_path.exists():
                     await self.app.executor.execute(
-                        self.app.builder_class, repo_path, built_path, base_url
+                        self.app.builder_class, repo_path, build_path, base_url
                     )
+
                 # This is a *sure* path traversal attack
-                full_path = built_path / path
+                full_path = build_path / path
                 if full_path.is_dir():
                     full_path = full_path / "index.html"
                 mimetype, encoding = mimetypes.guess_type(full_path)
@@ -108,15 +118,14 @@ class ResolveHandler(BaseHandler):
 
 class IndexHandler(BaseHandler):
     async def get(self):
-        config = {}
-
+        config = {
+            "title": self.app.site_title,
+            "heading": self.app.site_heading,
+            "subheading": self.app.site_subheading,
+            "baseUrl": self.app.base_url,
+        }
         self.write(
-            self.app.templates_loader.get_template("home.html").render(
-                site_title=self.app.site_title,
-                site_heading=self.app.site_heading,
-                site_subheading=self.app.site_subheading,
-                config=config,
-            )
+            self.app.templates_loader.get_template("home.html").render(config=config)
         )
 
 
@@ -125,6 +134,16 @@ class JupyterBookPubApp(Application):
     debug = Bool(True, help="Turn on debug mode", config=True)
 
     port = Int(9200, help="Port to listen on", config=True)
+    base_url = Unicode("/", help="The base URL of the entire application", config=True)
+
+    @validate("base_url")
+    def _valid_base_url(self, proposal):
+        if not proposal.value.startswith("/"):
+            proposal.value = "/" + proposal.value
+        if not proposal.value.endswith("/"):
+            proposal.value = proposal.value + "/"
+        return proposal.value
+
     persistent_path = Unicode(
         help="Base path for persistent files like repo checkouts, and template downloads. Created if it doesn't exist",
         config=True,
@@ -237,28 +256,29 @@ class JupyterBookPubApp(Application):
 
     async def start(self) -> None:
         self.initialize()
+
         self.web_app = tornado.web.Application(
             [
                 url(
-                    r"/api/v1/resolve",
+                    url_path_join(self.base_url, r"api/v1/resolve"),
                     ResolveHandler,
                     {"app": self},
                     name="resolve-api",
                 ),
                 url(
-                    r"/repo/(.*?)/(.*)",
+                    url_path_join(self.base_url, r"repo/(.*?)/(.*)"),
                     RepoHandler,
                     {"app": self},
                     name="repo",
                 ),
                 url(
-                    "/",
+                    self.base_url,
                     IndexHandler,
                     {"app": self},
                     name="app",
                 ),
                 url(
-                    "/(.*)",
+                    url_path_join(self.base_url, "(.*)"),
                     StaticFileHandler,
                     {
                         "path": str(Path(__file__).parent / "generated_static"),
@@ -267,6 +287,7 @@ class JupyterBookPubApp(Application):
                 ),
             ],
             debug=self.debug,
+            cookie_secret=secrets.token_bytes(32),
         )
         self.web_app.listen(self.port)
         await asyncio.Event().wait()
