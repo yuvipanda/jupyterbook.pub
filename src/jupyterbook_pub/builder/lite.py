@@ -1,32 +1,31 @@
 import asyncio
-import shutil
-import tempfile
-from pathlib import Path
 
-from jupyterbook_pub.builder.base import Renderer
+from jupyterbook_pub.builder.base import PythonRenderer
 
 
-class JupyterLiteBuilder(Renderer):
-    async def render(self, repo_path: Path, built_path: Path, base_url: str):
-        if not built_path.exists():
-            with tempfile.TemporaryDirectory() as out_dir:
-                print(out_dir)
-                command = [
-                    "jupyter",
-                    "lite",
-                    "build",
-                    str(repo_path),
-                    "--output-dir",
-                    str(out_dir),
-                    "--contents",
-                    str(repo_path),
-                ]
-                proc = await asyncio.create_subprocess_exec(
-                    *command, cwd=str(repo_path)
-                )
+class JupyterLiteBuilder(PythonRenderer):
+    @classmethod
+    def config_file_name(cls) -> str:
+        return "jupyter_lite_builder"
 
-                retcode = await proc.wait()
-                if retcode == 0:
-                    shutil.move(out_dir, built_path)
-                else:
-                    raise Exception("jupyter lite build failed")
+    async def render(self):
+        command = [
+            "jupyter",
+            "lite",
+            "build",
+            self.repo_path,
+            "--output-dir",
+            self.output_dir,
+            "--contents",
+            self.repo_path,
+        ]
+        proc = await asyncio.create_subprocess_exec(*command, cwd=self.repo_path)
+
+        retcode = await proc.wait()
+        if retcode != 0:
+            raise Exception("jupyter lite build failed")
+
+
+if __name__ == "__main__":
+    app = JupyterLiteBuilder()
+    asyncio.run(app.start())

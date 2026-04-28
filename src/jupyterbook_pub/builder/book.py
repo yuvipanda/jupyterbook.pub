@@ -4,15 +4,16 @@ import asyncio
 import dataclasses
 import shutil
 from pathlib import Path
+import tempfile
 from typing import Optional
 
-from traitlets import default, Bool, Instance
+from traitlets import default, Bool, Instance, Unicode
 
 
 from ruamel.yaml import YAML
 from jupyter_book_site_renderer import JupyterBookSiteRenderer
 
-from .base import Renderer
+from .base import PythonRenderer
 
 # We don't have to roundtrip here, because nobody reads that YAML
 yaml = YAML(typ="safe")
@@ -32,11 +33,17 @@ class Route:
 class ProcessFailedError(Exception): ...
 
 
-class JupyterBook2Builder(Renderer):
+class JupyterBook2Builder(PythonRenderer):
     """
     Build Jupyter Book from pre-built AST.
     If the AST does not exist, attempt a source build.
     """
+
+    name = Unicode("jupyterbook2builder")
+
+    @classmethod
+    def config_file_name(cls) -> str:
+        return "jupyter_book_2_builder"
 
     allow_source_builds = Bool(
         True,
@@ -161,7 +168,7 @@ class JupyterBook2Builder(Renderer):
 
         return ast_path, template_path
 
-    async def render(self, source_or_ast_path: Path, built_path: Path, base_url: str):
+    async def render(self):
         """
         Render a Jupyter Book into HTML. There are several pathways:
 
@@ -176,6 +183,12 @@ class JupyterBook2Builder(Renderer):
         :param built_path: path to the built HTML outputs.
         :base_url: base URL of the ultimate render path.
         """
+        source_or_ast_path = Path(self.repo_path)
+        built_path = Path(self.built_path)
+        base_url = self.base_url
+
+        self.log.info("Building book")
+
         # Source is AST, build HTML from it
         if (source_or_ast_path / "config.json").exists():
             await self.ast_renderer.render_html(
@@ -194,12 +207,20 @@ class JupyterBook2Builder(Renderer):
 
         # Otherwise try build from source
         if self.allow_source_builds:
-            ast_path, template_path = await self.build_site_from_book(
-                source_or_ast_path
-            )
-            await self.ast_renderer.render_html(
-                ast_path, built_path, template_path, base_url
-            )
-            return
+            with tempfile.TemporaryDirectory() as _tmpdir:
+                # Copy the source to somewhere writeable
+                source_path = Path(_tmpdir)
+                shutil.copytree(source_or_ast_path, source_path, dirs_exist_ok=True)
+
+                ast_path, template_path = await self.build_site_from_book(source_path)
+                await self.ast_renderer.render_html(
+                    ast_path, built_path, template_path, base_url
+                )
+                return
         else:
             raise RuntimeError("Not permitted to build AST from project sources")
+
+
+if __name__ == "__main__":
+    app = JupyterBook2Builder()
+    asyncio.run(app.start())
