@@ -44,7 +44,7 @@ dependencies = [
     "jupyterlite-core",
     "jupyterlite-pyodide-kernel",
     "libarchive-c",
-    "jupyter-book-site-renderer"
+    "jupyter-book-site-renderer",
     "jupyterhub"
 ]
 
