@@ -7,10 +7,13 @@ import secrets
 import os
 from pathlib import Path
 from typing import override
+import urllib.parse
 
 import tornado
 from cachetools import TTLCache
 from jinja2 import Environment, FileSystemLoader
+from jupyterhub.services.auth import HubOAuthenticated, HubOAuthCallbackHandler
+from jupyterhub.utils import url_path_join
 from repoproviders import resolve
 from repoproviders.fetchers.fetcher import fetch
 from repoproviders.resolvers import to_json
@@ -18,8 +21,9 @@ from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists
 from tornado.web import (
     HTTPError,
     RequestHandler,
-    StaticFileHandler,
+    StaticFileHandler as StaticHandler,
     url,
+    authenticated,
 )
 from traitlets import default, validate, Bool, Instance, Int, Integer, Type, Unicode
 from traitlets.config import Application
@@ -28,17 +32,41 @@ from .cache import make_checkout_cache_key, make_rendered_cache_key
 from .executor import BuildExecutor, LocalProcessExecutor
 from .builder.base import Renderer
 from .builder.book import JupyterBook2Builder
-from .utils import url_path_join
 
 
-class BaseHandler(RequestHandler):
-    def initialize(self, app: JupyterBookPubApp):
+maybe_authenticated = (
+    authenticated if "JUPYTERHUB_SERVICE_PREFIX" in os.environ else lambda x: x
+)
+
+
+class AppMixin:
+    def initialize(self, *, app, **kwargs):
         self.app = app
-        self.log = app.log
+        super().initialize(**kwargs)
+
+    @property
+    def log(self):
+        return self.app.log
 
 
-class RepoHandler(BaseHandler):
-    def get_spec_from_request(self, prefix):
+class BaseHandler(AppMixin, HubOAuthenticated, RequestHandler): ...
+
+
+class NoXSRFMixin:
+    def check_xsrf_cookie(self):
+        # don't need XSRF protections on static assets
+        return
+
+
+class StaticFileHandler(NoXSRFMixin, HubOAuthenticated, StaticHandler):
+    @maybe_authenticated
+    async def get(self, path: str, include_body: bool = True) -> None:
+
+        return await super().get(path, include_body=include_body)
+
+
+class BuiltRepoHandler(AppMixin, NoXSRFMixin, HubOAuthenticated, StaticHandler):
+    def get_raw_arg(self, prefix):
         """
         Re-extract spec from request.path.
         Get the original, raw spec, without tornado's unquoting.
@@ -48,62 +76,86 @@ class RepoHandler(BaseHandler):
         spec = self.request.path[idx + len(prefix) :]
         return spec
 
-    async def get(self, repo_spec: str, path: str):
-        prefix = url_path_join(self.app.base_url, "/repo/")
-        spec = self.get_spec_from_request(prefix)
+    @maybe_authenticated
+    async def get(self, arg: str):
+        root_build_path = Path(self.app.built_sites_root)
+        root_build_path.mkdir(exist_ok=True)
 
-        raw_repo_spec, _ = spec.split("/", 1)
+        # Recieve the raw value of arg
+        prefix = url_path_join(self.app.base_url, "/repo/")
+        raw_arg = self.get_raw_arg(prefix)
+
+        # Extract the spec, and tail
+        raw_repo_spec, tail = raw_arg.split("/", 1)
+        repo_spec = urllib.parse.unquote(raw_repo_spec)
+
         last_answer = await self.app.resolve(repo_spec)
         if last_answer is None:
             raise tornado.web.HTTPError(404, f"{repo_spec} could not be resolved")
         match last_answer:
             case Exists(repo) | MaybeExists(repo):
-                repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
+                build_cache_key = make_rendered_cache_key(repo, self.app.base_url)
+                build_path = root_build_path / build_cache_key
 
+                if not build_path.exists():
+                    build_url_result = urllib.parse.urlparse(
+                        url_path_join(self.app.base_url, "build")
+                    )
+                    build_url = urllib.parse.urlunparse(
+                        build_url_result._replace(
+                            query=urllib.parse.urlencode(
+                                {
+                                    "spec": repo_spec,
+                                    "next": self.request.path,
+                                }
+                            )
+                        )
+                    )
+
+                    return self.redirect(build_url)
+                else:
+                    # Rewrite URL against build cache key
+                    content_url = url_path_join(build_cache_key, tail)
+                    return await super().get(content_url)
+
+
+class BuildHandler(BaseHandler):
+    @maybe_authenticated
+    async def get(self):
+        root_build_path = Path(self.app.built_sites_root)
+        root_build_path.mkdir(exist_ok=True)
+
+        spec = self.get_argument("spec")
+        next_url = self.get_argument("next")
+        raw_spec = urllib.parse.quote(spec, safe="")
+
+        last_answer = await self.app.resolve(spec)
+        if last_answer is None:
+            raise tornado.web.HTTPError(404, f"{spec} could not be resolved")
+        match last_answer:
+            case Exists(repo) | MaybeExists(repo):
+                build_cache_key = make_rendered_cache_key(repo, self.app.base_url)
+                build_path = root_build_path / build_cache_key
+                # If directly invoked, build path may exist
+                if build_path.exists():
+                    self.redirect(next_url)
+
+                repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
                 if not repo_path.exists():
                     self.log.info(f"Fetching {repo}...\n")
                     await fetch(repo, repo_path)
                     self.log.info(f"Fetched {repo}")
 
-                root_build_path = Path(self.app.built_sites_root)
-                root_build_path.mkdir(exist_ok=True)
+                base_url = url_path_join(self.app.base_url, "repo", raw_spec)
+                await self.app.executor.execute(
+                    self.app.builder_class, repo_path, build_path, base_url
+                )
 
-                build_cache_key = make_rendered_cache_key(repo, self.app.base_url)
-                base_url = url_path_join(self.app.base_url, "repo", raw_repo_spec)
-                build_path = root_build_path / build_cache_key
-
-                # If the built path exists, redirect there!
-                if not build_path.exists():
-                    await self.app.executor.execute(
-                        self.app.builder_class, repo_path, build_path, base_url
-                    )
-
-                # This is a *sure* path traversal attack
-                full_path = build_path / path
-                if full_path.is_dir():
-                    full_path = full_path / "index.html"
-                mimetype, encoding = mimetypes.guess_type(full_path)
-                if encoding == "gzip":
-                    mimetype = "application/gzip"
-                if mimetype:
-                    self.set_header("Content-Type", mimetype)
-                try:
-                    with open(full_path, "rb") as f:
-                        # hard code the chunk size for now
-                        # 64 * 1024 is what tornado uses https://github.com/tornadoweb/tornado/blob/e14929c305019fd494c74934445f0b72af4f98ab/tornado/web.py#L3020
-                        while True:
-                            chunk = f.read(64 * 1024)
-                            if not chunk:
-                                break
-                            self.write(chunk)
-                except FileNotFoundError:
-                    # The site is built, just that this particular file doesn't exist
-                    raise HTTPError(404)
-            case DoesNotExist(repo):
-                raise tornado.web.HTTPError(404, f"{repo} could not be resolved")
+                return self.redirect(next_url)
 
 
 class ResolveHandler(BaseHandler):
+    @maybe_authenticated
     async def get(self):
         question = self.get_query_argument("q")
         if not question:
@@ -116,7 +168,8 @@ class ResolveHandler(BaseHandler):
         self.write(to_json(answer))
 
 
-class IndexHandler(BaseHandler):
+class IndexHandler(NoXSRFMixin, BaseHandler):
+    @maybe_authenticated
     async def get(self):
         config = {
             "title": self.app.site_title,
@@ -143,6 +196,15 @@ class JupyterBookPubApp(Application):
         if not proposal.value.endswith("/"):
             proposal.value = proposal.value + "/"
         return proposal.value
+
+    hub_api_token = Unicode(
+        help="""API token for talking to the JupyterHub API""",
+        config=True,
+    )
+
+    @default("hub_api_token")
+    def _default_hub_token(self):
+        return os.environ.get("JUPYTERHUB_API_TOKEN", "")
 
     persistent_path = Unicode(
         help="Base path for persistent files like repo checkouts, and template downloads. Created if it doesn't exist",
@@ -260,16 +322,30 @@ class JupyterBookPubApp(Application):
         self.web_app = tornado.web.Application(
             [
                 url(
+                    url_path_join(self.base_url, "oauth_callback"),
+                    HubOAuthCallbackHandler,
+                ),
+                url(
                     url_path_join(self.base_url, r"api/v1/resolve"),
                     ResolveHandler,
                     {"app": self},
                     name="resolve-api",
                 ),
                 url(
-                    url_path_join(self.base_url, r"repo/(.*?)/(.*)"),
-                    RepoHandler,
+                    url_path_join(self.base_url, r"repo/(.*?)"),
+                    BuiltRepoHandler,
+                    {
+                        "app": self,
+                        "path": str(Path(self.built_sites_root)),
+                        "default_filename": "index.html",
+                    },
+                    name="render-repo",
+                ),
+                url(
+                    url_path_join(self.base_url, r"build"),
+                    BuildHandler,
                     {"app": self},
-                    name="repo",
+                    name="build-repo",
                 ),
                 url(
                     self.base_url,
