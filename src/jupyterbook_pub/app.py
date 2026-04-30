@@ -32,10 +32,20 @@ from .executor import BuildExecutor, LocalProcessExecutor
 from .builder.base import Renderer
 from .builder.book import JupyterBook2Builder
 
-
-maybe_authenticated = (
-    authenticated if "JUPYTERHUB_SERVICE_PREFIX" in os.environ else lambda x: x
+USE_AUTHENTICATION = (
+    "JUPYTERHUB_SERVICE_PREFIX" in os.environ
+    # Check for opt-out
+    and os.environ.get("JUPYTERBOOK_PUB_NO_AUTH", "0").lower()
+    not in ("1", "true", "yes")
 )
+
+maybe_authenticated = authenticated if USE_AUTHENTICATION else lambda x: x
+
+
+class NoAuth: ...
+
+
+MaybeAuthenticatedMixin = HubOAuthenticated if USE_AUTHENTICATION else NoAuth
 
 
 class AppMixin:
@@ -48,23 +58,20 @@ class AppMixin:
         return self.app.log
 
 
-class BaseHandler(AppMixin, HubOAuthenticated, RequestHandler): ...
-
-
 class NoXSRFMixin:
     def check_xsrf_cookie(self):
         # don't need XSRF protections on static assets
         return
 
 
-class StaticFileHandler(NoXSRFMixin, HubOAuthenticated, StaticHandler):
+class StaticFileHandler(NoXSRFMixin, MaybeAuthenticatedMixin, StaticHandler):
     @maybe_authenticated
     async def get(self, path: str, include_body: bool = True) -> None:
 
         return await super().get(path, include_body=include_body)
 
 
-class BuiltRepoHandler(AppMixin, NoXSRFMixin, HubOAuthenticated, StaticHandler):
+class BuiltRepoHandler(AppMixin, NoXSRFMixin, MaybeAuthenticatedMixin, StaticHandler):
     def get_raw_arg(self, prefix):
         """
         Re-extract spec from request.path.
@@ -120,7 +127,7 @@ class BuiltRepoHandler(AppMixin, NoXSRFMixin, HubOAuthenticated, StaticHandler):
                     return self.redirect(build_url)
 
 
-class BuildHandler(BaseHandler):
+class BuildHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
     @maybe_authenticated
     async def get(self):
         root_build_path = Path(self.app.built_sites_root)
@@ -160,7 +167,7 @@ class BuildHandler(BaseHandler):
                 return self.redirect(next_url)
 
 
-class ResolveHandler(BaseHandler):
+class ResolveHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
     @maybe_authenticated
     async def get(self):
         question = self.get_query_argument("q")
@@ -174,7 +181,7 @@ class ResolveHandler(BaseHandler):
         self.write(to_json(answer))
 
 
-class IndexHandler(NoXSRFMixin, BaseHandler):
+class IndexHandler(NoXSRFMixin, AppMixin, MaybeAuthenticatedMixin, RequestHandler):
     @maybe_authenticated
     async def get(self):
         config = {
