@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import mimetypes
 import secrets
 import os
 from pathlib import Path
@@ -17,7 +16,7 @@ from jupyterhub.utils import url_path_join
 from repoproviders import resolve
 from repoproviders.fetchers.fetcher import fetch
 from repoproviders.resolvers import to_json
-from repoproviders.resolvers.base import DoesNotExist, Exists, MaybeExists
+from repoproviders.resolvers.base import Exists, MaybeExists
 from tornado.web import (
     HTTPError,
     RequestHandler,
