@@ -42,7 +42,10 @@ USE_AUTHENTICATION = (
 maybe_authenticated = authenticated if USE_AUTHENTICATION else lambda x: x
 
 
-MaybeAuthenticatedMixin = HubOAuthenticated if USE_AUTHENTICATION else object
+class NoAuth: ...
+
+
+MaybeAuthenticatedMixin = HubOAuthenticated if USE_AUTHENTICATION else NoAuth
 
 
 class AppMixin:
