@@ -183,7 +183,7 @@ class IndexHandler(NoXSRFMixin, BaseHandler):
 
 class JupyterBookPubApp(Application):
     name = Unicode("jupyterbook-pub-app")
-    debug = Bool(True, help="Turn on debug mode", config=True)
+    debug = Bool(help="Turn on debug mode", config=True)
 
     port = Int(9200, help="Port to listen on", config=True)
     base_url = Unicode("/", help="The base URL of the entire application", config=True)
