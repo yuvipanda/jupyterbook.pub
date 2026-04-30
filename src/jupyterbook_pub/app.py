@@ -96,7 +96,14 @@ class BuiltRepoHandler(AppMixin, NoXSRFMixin, HubOAuthenticated, StaticHandler):
                 build_cache_key = make_rendered_cache_key(repo, self.app.base_url)
                 build_path = root_build_path / build_cache_key
 
-                if not build_path.exists():
+                # Can we serve pre-built content?
+                if build_path.exists():
+                    # Rewrite URL against build cache key
+                    # Do not include path to the handler
+                    content_url = url_path_join(build_cache_key, tail)
+                    return await super().get(content_url)
+                else:
+                    # Redirect to build handler
                     build_url_result = urllib.parse.urlparse(
                         url_path_join(self.app.base_url, "build")
                     )
@@ -110,12 +117,7 @@ class BuiltRepoHandler(AppMixin, NoXSRFMixin, HubOAuthenticated, StaticHandler):
                             )
                         )
                     )
-
                     return self.redirect(build_url)
-                else:
-                    # Rewrite URL against build cache key
-                    content_url = url_path_join(build_cache_key, tail)
-                    return await super().get(content_url)
 
 
 class BuildHandler(BaseHandler):
@@ -135,21 +137,26 @@ class BuildHandler(BaseHandler):
             case Exists(repo) | MaybeExists(repo):
                 build_cache_key = make_rendered_cache_key(repo, self.app.base_url)
                 build_path = root_build_path / build_cache_key
+
                 # If directly invoked, build path may exist
                 if build_path.exists():
                     self.redirect(next_url)
 
+                # Find the source content
                 repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
                 if not repo_path.exists():
+                    # First, fetch the repo
                     self.log.info(f"Fetching {repo}...\n")
                     await fetch(repo, repo_path)
                     self.log.info(f"Fetched {repo}")
 
+                # Define BASE_URL for the resolved path
                 base_url = url_path_join(self.app.base_url, "repo", raw_spec)
                 await self.app.executor.execute(
                     self.app.builder_class, repo_path, build_path, base_url
                 )
 
+                # Redirect to `?next`
                 return self.redirect(next_url)
 
 
