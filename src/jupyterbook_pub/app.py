@@ -228,32 +228,17 @@ class JupyterBookPubApp(Application):
     def _default_hub_token(self):
         return os.environ.get("JUPYTERHUB_API_TOKEN", "")
 
-    persistent_path = Unicode(
-        help="Base path for persistent files like repo checkouts, and template downloads. Created if it doesn't exist",
-        config=True,
-    )
-
-    @default("persistent_path")
-    def _default_persistent_path(self):
-        return str(Path.cwd())
-
     repo_checkout_root = Unicode(
+        "repos",
         help="Path to check out repos to. Created if it doesn't exist",
         config=True,
     )
 
-    @default("repo_checkout_root")
-    def _default_repo_checkout_root(self):
-        return str(Path(self.persistent_path) / "repos")
-
     built_sites_root = Unicode(
+        "built_sites",
         help="Path to copy built files to. Created if it doesn't exist",
         config=True,
     )
-
-    @default("built_sites_root")
-    def _default_built_sites_root(self):
-        return str(Path(self.persistent_path) / "built_sites")
 
     resolver_cache_ttl_seconds = Integer(
         10 * 60,
@@ -305,9 +290,10 @@ class JupyterBookPubApp(Application):
             "config": "JupyterBookPubApp.config_file",
             "builder": "JupyterBookPubApp.builder_class",
             "builder-config": "JupyterBookPubApp.builder_config_file",
-            "persistent": "JupyterBookPubApp.persistent_path",
+            "repos": "JupyterBookPubApp.repo_checkout_root",
+            "builds": "JupyterBookPubApp.built_sites_root",
             "resolver-ttl": "JupyterBookPubApp.resolver_cache_ttl_seconds",
-            "resolver-size": "JupyterBookPubApp.resolver_cache_max_size"
+            "resolver-size": "JupyterBookPubApp.resolver_cache_max_size",
         }
     )
     flags = Dict(
