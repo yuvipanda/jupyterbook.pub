@@ -330,8 +330,6 @@ class JupyterBookPubApp(Application):
         self.executor = self.executor_class(parent=self)
 
     async def start(self) -> None:
-        self.initialize()
-
         self.web_app = tornado.web.Application(
             [
                 url(
@@ -384,4 +382,5 @@ class JupyterBookPubApp(Application):
 
 if __name__ == "__main__":
     app = JupyterBookPubApp()
+    app.initialize()
     asyncio.run(app.start())
