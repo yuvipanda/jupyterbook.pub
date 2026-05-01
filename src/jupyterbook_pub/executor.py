@@ -1,4 +1,4 @@
-from traitlets import Bool, Dict, Instance, Unicode
+from traitlets import Bool, Dict, Instance, Type, Unicode
 from traitlets.config import Application, LoggingConfigurable
 import asyncio
 import sys
@@ -13,36 +13,17 @@ class ProcessFailedError(Exception): ...
 
 
 class BuildExecutor(LoggingConfigurable):
-    @classmethod
-    def resolve_config_file(
-        cls, app: Application, builder_class: type[Renderer]
-    ) -> Path | None:
-        """
-        Resolve the config file name for a particular builder with respect
-        to existing config files.
-
-        Return the path to the found file if detected.
-
-        :param app: main Application
-        :param builder_class: builder to configure
-        """
-        config_file_name = f"{builder_class.config_file_name()}.json"
-        for _path in app.loaded_config_files:
-            path = Path(_path)
-
-            # For now, only JSON (easier to reason about)
-            full_path = path.parent / config_file_name
-
-            if full_path.exists():
-                return full_path.absolute()
-
-        this_dir_config = (Path.cwd() / config_file_name).absolute()
-        if this_dir_config.exists():
-            return this_dir_config
+    builder_class = Type(
+        klass=Renderer,
+        allow_none=False,
+        help="Builder to use for this installation",
+    )
+    builder_config_file = Unicode(
+        None, help="The builder config file to load", allow_none=True
+    )
 
     async def execute(
         self,
-        builder_class: type[Renderer],
         repo_path: Path,
         dest_path: Path,
         base_url: str,
@@ -65,7 +46,6 @@ class LockingExecutor(BuildExecutor):
 
     def prepare_process_cmd(
         self,
-        builder_class: type[Renderer],
         repo_path: Path,
         build_path: Path,
         base_url: str,
@@ -74,7 +54,6 @@ class LockingExecutor(BuildExecutor):
 
     async def execute(
         self,
-        builder_class: type[Renderer],
         repo_path: Path,
         dest_path: Path,
         base_url: str,
@@ -91,9 +70,7 @@ class LockingExecutor(BuildExecutor):
 
             try:
                 self.log.info("Running first build")
-                cmd = self.prepare_process_cmd(
-                    builder_class, repo_path, build_path, base_url
-                )
+                cmd = self.prepare_process_cmd(repo_path, build_path, base_url)
 
                 await self.run_process(cmd)
 
@@ -149,7 +126,6 @@ class DockerExecutor(LockingExecutor):
 
     def prepare_process_cmd(
         self,
-        builder_class: type[Renderer],
         repo_path: Path,
         build_path: Path,
         base_url: str,
@@ -175,14 +151,20 @@ class DockerExecutor(LockingExecutor):
 
         working_dir = Path("/tmp")
 
-        # Find config file for builder, and mount it
-        builder_config_path = self.resolve_config_file(self.parent, builder_class)
-        if builder_config_path is not None:
-            # TODO nicer way to locate this explicitly
-            dest_config_path = working_dir / builder_config_path.name
-            mounts.append(
-                f"type=bind,src={builder_config_path},dst={dest_config_path},readonly"
-            )
+        # Allow pass-in of configuration
+        container_config_path = None
+        if self.builder_config_file is not None:
+            builder_config_path = Path(self.builder_config_file).absolute()
+
+            if builder_config_path.exists():
+                container_config_path = working_dir / builder_config_path.name
+                mounts.append(
+                    f"type=bind,src={builder_config_path},dst={container_config_path},readonly"
+                )
+            else:
+                self.log.warn(
+                    f"Couldn't find builder config file: {builder_config_path}"
+                )
 
         invocation_cmd = [
             self.engine,
@@ -199,10 +181,11 @@ class DockerExecutor(LockingExecutor):
         ]
         builder_cmd = [
             str(p)
-            for p in builder_class.entrypoint(
+            for p in self.builder_class.entrypoint(
                 repo_mount_path,
                 dest_mount_path,
                 base_url,
+                config_path=container_config_path,
             )
         ]
         return [*invocation_cmd, *builder_cmd]
@@ -211,7 +194,6 @@ class DockerExecutor(LockingExecutor):
 class LocalProcessExecutor(LockingExecutor):
     def prepare_process_cmd(
         self,
-        builder_class: type[Renderer],
         repo_path: Path,
         build_path: Path,
         base_url: str,
@@ -219,6 +201,11 @@ class LocalProcessExecutor(LockingExecutor):
         return tuple(
             [
                 sys.executable if p is ReservedCommands.python else str(p)
-                for p in builder_class.entrypoint(repo_path, build_path, base_url)
+                for p in self.builder_class.entrypoint(
+                    repo_path,
+                    build_path,
+                    base_url,
+                    config_path=self.builder_config_file,
+                )
             ]
         )

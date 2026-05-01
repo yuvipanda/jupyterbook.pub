@@ -13,7 +13,7 @@ from traitlets import default, Bool, Instance, Unicode
 from ruamel.yaml import YAML
 from jupyter_book_site_renderer import JupyterBookSiteRenderer
 
-from .base import PythonRenderer
+from .base import TraitletsRenderer
 
 # We don't have to roundtrip here, because nobody reads that YAML
 yaml = YAML(typ="safe")
@@ -33,7 +33,7 @@ class Route:
 class ProcessFailedError(Exception): ...
 
 
-class JupyterBook2Builder(PythonRenderer):
+class JupyterBook2Builder(TraitletsRenderer):
     """
     Build Jupyter Book from pre-built AST.
     If the AST does not exist, attempt a source build.
@@ -41,17 +41,13 @@ class JupyterBook2Builder(PythonRenderer):
 
     name = Unicode("jupyterbook2builder")
 
-    @classmethod
-    def config_file_name(cls) -> str:
-        return "jupyter_book_2_builder"
-
     allow_source_builds = Bool(
         True,
         help="Allow builds of Jupyter Book projects from source. This may involve execution of foreign JS",
         config=True,
     )
 
-    ast_renderer = Instance(JupyterBookSiteRenderer)
+    ast_renderer = Instance(JupyterBookSiteRenderer, help="Renderer for AST into HTML")
 
     @default("ast_renderer")
     def _default_ast_renderer(self):

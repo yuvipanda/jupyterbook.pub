@@ -24,7 +24,18 @@ from tornado.web import (
     url,
     authenticated,
 )
-from traitlets import default, validate, Bool, Instance, Int, Integer, Type, Unicode
+from traitlets import (
+    default,
+    validate,
+    observe,
+    Bool,
+    Dict,
+    Instance,
+    Int,
+    Integer,
+    Type,
+    Unicode,
+)
 from traitlets.config import Application
 
 from .cache import make_checkout_cache_key, make_rendered_cache_key
@@ -159,9 +170,7 @@ class BuildHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
 
                 # Define BASE_URL for the resolved path
                 base_url = url_path_join(self.app.base_url, "repo", raw_spec)
-                await self.app.executor.execute(
-                    self.app.builder_class, repo_path, build_path, base_url
-                )
+                await self.app.executor.execute(repo_path, build_path, base_url)
 
                 # Redirect to `?next`
                 return self.redirect(next_url)
@@ -288,7 +297,32 @@ class JupyterBookPubApp(Application):
     config_file = Unicode(
         "jupyterbook_pub_config.py", help="The config file to load", config=True
     )
-    aliases = {"f": "JupyterBookPubApp.config_file"}
+    builder_config_file = Unicode(
+        None, help="The builder config file to load", allow_none=True, config=True
+    )
+    aliases = Dict(
+        {
+            "config": "JupyterBookPubApp.config_file",
+            "builder": "JupyterBookPubApp.builder_class",
+            "builder-config": "JupyterBookPubApp.builder_config_file",
+        }
+    )
+    flags = Dict(
+        {
+            **Application.flags,
+            "debug": (
+                {"JupyterBookPubApp": {"debug": True}},
+                "Set log-level to debug, and turn on debug features",
+            ),
+        }
+    )
+
+    @observe("debug")
+    def _observe_debug(self, change):
+        debug = change["new"]
+
+        if debug:
+            self.log_level = logging.DEBUG
 
     async def resolve(self, question: str):
         if question in self.resolver_cache:
@@ -327,7 +361,11 @@ class JupyterBookPubApp(Application):
             maxsize=self.resolver_cache_max_size, ttl=10 * 60
         )
 
-        self.executor = self.executor_class(parent=self)
+        self.executor = self.executor_class(
+            parent=self,
+            builder_class=self.builder_class,
+            builder_config_file=self.builder_config_file,
+        )
 
     async def launch(self) -> None:
         self.web_app = tornado.web.Application(
