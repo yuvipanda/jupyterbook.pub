@@ -288,7 +288,10 @@ class JupyterBookPubApp(Application):
     config_file = Unicode(
         "jupyterbook_pub_config.py", help="The config file to load", config=True
     )
-    aliases = {"f": "JupyterBookPubApp.config_file"}
+    builder_config_file = Unicode(
+        None, help="The builder config file to load", allow_none=True, config=True
+    )
+    aliases = {"config": "JupyterBookPubApp.config_file"}
 
     async def resolve(self, question: str):
         if question in self.resolver_cache:

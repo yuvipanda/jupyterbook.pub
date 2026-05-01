@@ -14,15 +14,12 @@ class ReservedCommands(StrEnum):
 
 class Renderer:
     @classmethod
-    def config_file_name(cls):
-        """
-        Stem of config file to search for when running this renderer as an app.
-        """
-        raise NotImplementedError
-
-    @classmethod
     def entrypoint(
-        cls, repo_path: pathlib.Path, build_path: pathlib.Path, base_url: str
+        cls,
+        repo_path: pathlib.Path,
+        build_path: pathlib.Path,
+        base_url: str,
+        config_path: pathlib.Path = None,
     ) -> tuple[ReservedCommands | str, ...]:
         """
         Tuple of executable entrypoint items required to launch this renderer.
@@ -33,23 +30,29 @@ class Renderer:
         raise NotImplementedError
 
 
-class PythonRenderer(Renderer, Application):
+class TraitletsRenderer(Renderer, Application):
     repo_path = Unicode(config=True)
     built_path = Unicode(config=True)
     base_url = Unicode(config=True)
+    config_file = Unicode("", help="Load this config file").tag(config=True)
 
     aliases = {
         **Application.aliases,
-        "repo": "Renderer.repo_path",
-        "dest": "Renderer.built_path",
-        "base-url": "Renderer.base_url",
+        "repo": "PythonRenderer.repo_path",
+        "dest": "PythonRenderer.built_path",
+        "base-url": "PythonRenderer.base_url",
+        "config": "PythonRenderer.config_file",
     }
 
     @classmethod
     def entrypoint(
-        cls, repo_path: pathlib.Path, build_path: pathlib.Path, base_url: str
+        cls,
+        repo_path: pathlib.Path,
+        build_path: pathlib.Path,
+        base_url: str,
+        config_path: pathlib.Path = None,
     ) -> tuple[ReservedCommands | str, ...]:
-        return (
+        entrypoint = [
             ReservedCommands.python,
             "-m",
             cls.__module__,
@@ -61,12 +64,15 @@ class PythonRenderer(Renderer, Application):
             base_url,
             "--log-level",
             str(logging.INFO),
-        )
+        ]
+        if config_path is not None:
+            entrypoint.extend(["--config", config_path])
+        return tuple(entrypoint)
 
     @override
     def initialize(self, argv=None) -> None:
         super().initialize(argv)
-        self.load_config_file(self.config_file_name())
+        self.load_config_file(self.config_file)
         self.load_config_environ()
 
     async def render(self):

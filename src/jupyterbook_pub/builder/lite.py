@@ -1,32 +1,33 @@
-import asyncio
+import pathlib
+from jupyterbook_pub.builder.base import Renderer, ReservedCommands
 
-from jupyterbook_pub.builder.base import PythonRenderer
 
-
-class JupyterLiteBuilder(PythonRenderer):
+class JupyterLiteBuilder(Renderer):
     @classmethod
-    def config_file_name(cls) -> str:
-        return "jupyter_lite_builder"
+    def entrypoint(
+        cls,
+        repo_path: pathlib.Path,
+        build_path: pathlib.Path,
+        base_url: str,
+        config_path: pathlib.Path = None,
+    ) -> tuple[ReservedCommands | str, ...]:
+        """
+        Tuple of executable entrypoint items required to launch this renderer.
 
-    async def render(self):
-        command = [
+        Consumers should substitute ReservedCommands instances with appropriate values,
+        e.g. python → sys.executable.
+        """
+        entrypoint = [
             "jupyter",
             "lite",
             "build",
-            self.repo_path,
+            "--lite-dir",
+            repo_path,
             "--output-dir",
-            self.output_dir,
+            build_path,
             "--contents",
-            self.repo_path,
+            repo_path,
         ]
-        proc = await asyncio.create_subprocess_exec(*command, cwd=self.repo_path)
-
-        retcode = await proc.wait()
-        if retcode != 0:
-            raise Exception("jupyter lite build failed")
-
-
-if __name__ == "__main__":
-    app = JupyterLiteBuilder()
-    app.initialize()
-    app.start()
+        if config_path is not None:
+            entrypoint.extend(["--config", config_path])
+        return tuple(entrypoint)
