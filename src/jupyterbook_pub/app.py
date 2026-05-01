@@ -305,6 +305,9 @@ class JupyterBookPubApp(Application):
             "config": "JupyterBookPubApp.config_file",
             "builder": "JupyterBookPubApp.builder_class",
             "builder-config": "JupyterBookPubApp.builder_config_file",
+            "persistent": "JupyterBookPubApp.persistent_path",
+            "resolver-ttl": "JupyterBookPubApp.resolver_cache_ttl_seconds",
+            "resolver-size": "JupyterBookPubApp.resolver_cache_max_size"
         }
     )
     flags = Dict(
