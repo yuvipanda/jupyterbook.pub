@@ -168,7 +168,7 @@ class JupyterBook2Builder(PythonRenderer):
 
         return ast_path, template_path
 
-    async def start(self):
+    async def render(self):
         """
         Render a Jupyter Book into HTML. There are several pathways:
 
@@ -224,4 +224,4 @@ class JupyterBook2Builder(PythonRenderer):
 if __name__ == "__main__":
     app = JupyterBook2Builder()
     app.initialize()
-    asyncio.run(app.start())
+    app.start()

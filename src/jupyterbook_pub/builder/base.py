@@ -1,6 +1,8 @@
 from traitlets import Unicode
 from traitlets.config import Application
 from enum import StrEnum
+
+import asyncio
 import pathlib
 import logging
 from typing import override
@@ -67,10 +69,13 @@ class PythonRenderer(Renderer, Application):
         self.load_config_file(self.config_file_name())
         self.load_config_environ()
 
-    async def start(self):
+    async def render(self):
         """
         Render a checked out repo at repo_path, outputting static assets to built_path
         """
         raise NotImplementedError(
             "Inherit from Renderer and implement the render method"
         )
+
+    def start(self):
+        asyncio.run(self.render())

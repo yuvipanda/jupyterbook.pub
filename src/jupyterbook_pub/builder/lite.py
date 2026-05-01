@@ -8,7 +8,7 @@ class JupyterLiteBuilder(PythonRenderer):
     def config_file_name(cls) -> str:
         return "jupyter_lite_builder"
 
-    async def start(self):
+    async def render(self):
         command = [
             "jupyter",
             "lite",
@@ -29,4 +29,4 @@ class JupyterLiteBuilder(PythonRenderer):
 if __name__ == "__main__":
     app = JupyterLiteBuilder()
     app.initialize()
-    asyncio.run(app.start())
+    app.start()
