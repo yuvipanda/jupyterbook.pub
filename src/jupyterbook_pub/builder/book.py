@@ -223,4 +223,5 @@ class JupyterBook2Builder(PythonRenderer):
 
 if __name__ == "__main__":
     app = JupyterBook2Builder()
-    asyncio.run(app.start())
+    app.initialize()
+    app.start()

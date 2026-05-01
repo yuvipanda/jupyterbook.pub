@@ -1,8 +1,11 @@
 from traitlets import Unicode
 from traitlets.config import Application
 from enum import StrEnum
+
+import asyncio
 import pathlib
 import logging
+from typing import override
 
 
 class ReservedCommands(StrEnum):
@@ -60,12 +63,11 @@ class PythonRenderer(Renderer, Application):
             str(logging.INFO),
         )
 
-    async def start(self):
-        self.initialize()
+    @override
+    def initialize(self, argv=None) -> None:
+        super().initialize(argv)
         self.load_config_file(self.config_file_name())
         self.load_config_environ()
-
-        await self.render()
 
     async def render(self):
         """
@@ -74,3 +76,6 @@ class PythonRenderer(Renderer, Application):
         raise NotImplementedError(
             "Inherit from Renderer and implement the render method"
         )
+
+    def start(self):
+        asyncio.run(self.render())

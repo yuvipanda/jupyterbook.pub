@@ -28,4 +28,5 @@ class JupyterLiteBuilder(PythonRenderer):
 
 if __name__ == "__main__":
     app = JupyterLiteBuilder()
-    asyncio.run(app.start())
+    app.initialize()
+    app.start()
