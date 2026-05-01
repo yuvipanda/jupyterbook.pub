@@ -31,17 +31,17 @@ class Renderer:
 
 
 class TraitletsRenderer(Renderer, Application):
-    repo_path = Unicode(config=True)
-    built_path = Unicode(config=True)
-    base_url = Unicode(config=True)
-    config_file = Unicode("", help="Load this config file").tag(config=True)
+    repo_path = Unicode(None, allow_none=False, config=True)
+    built_path = Unicode(None, allow_none=False, config=True)
+    base_url = Unicode(None, allow_none=False, config=True)
+    config_file = Unicode("", help="Load this config file", config=True)
 
     aliases = {
         **Application.aliases,
-        "repo": "PythonRenderer.repo_path",
-        "dest": "PythonRenderer.built_path",
-        "base-url": "PythonRenderer.base_url",
-        "config": "PythonRenderer.config_file",
+        "repo": "TraitletsRenderer.repo_path",
+        "dest": "TraitletsRenderer.built_path",
+        "base-url": "TraitletsRenderer.base_url",
+        "config": "TraitletsRenderer.config_file",
     }
 
     @classmethod
