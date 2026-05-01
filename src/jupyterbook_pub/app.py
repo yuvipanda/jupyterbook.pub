@@ -300,13 +300,20 @@ class JupyterBookPubApp(Application):
     builder_config_file = Unicode(
         None, help="The builder config file to load", allow_none=True, config=True
     )
-    aliases = Dict({"config": "JupyterBookPubApp.config_file"})
+    aliases = Dict(
+        {
+            "config": "JupyterBookPubApp.config_file",
+            "builder": "JupyterBookPubApp.builder_class",
+            "builder-config": "JupyterBookPubApp.builder_config_file",
+        }
+    )
     flags = Dict(
         {
+            **Application.flags,
             "debug": (
                 {"JupyterBookPubApp": {"debug": True}},
                 "Set log-level to debug, and turn on debug features",
-            )
+            ),
         }
     )
 

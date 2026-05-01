@@ -201,6 +201,11 @@ class LocalProcessExecutor(LockingExecutor):
         return tuple(
             [
                 sys.executable if p is ReservedCommands.python else str(p)
-                for p in self.builder_class.entrypoint(repo_path, build_path, base_url)
+                for p in self.builder_class.entrypoint(
+                    repo_path,
+                    build_path,
+                    base_url,
+                    config_path=self.builder_config_file,
+                )
             ]
         )
