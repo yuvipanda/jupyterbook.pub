@@ -7,6 +7,7 @@ import tempfile
 import shutil
 
 from .builder.base import Renderer, ReservedCommands
+from .builder.book import JupyterBook2Builder
 
 
 class ProcessFailedError(Exception): ...
@@ -14,8 +15,10 @@ class ProcessFailedError(Exception): ...
 
 class BuildExecutor(LoggingConfigurable):
     builder_class = Type(
+        JupyterBook2Builder,
         klass=Renderer,
         allow_none=False,
+        config=True,
         help="Builder to use for this installation",
     )
     builder_config_file = Unicode(

@@ -40,8 +40,6 @@ from traitlets.config import Application
 
 from .cache import make_checkout_cache_key, make_rendered_cache_key
 from .executor import BuildExecutor, LocalProcessExecutor
-from .builder.base import Renderer
-from .builder.book import JupyterBook2Builder
 
 # Constants for name of unique storage paths
 BUILT_SITES_NAME = "built_sites"
@@ -266,13 +264,6 @@ class JupyterBookPubApp(Application):
         config=True,
     )
 
-    builder_class = Type(
-        JupyterBook2Builder,
-        klass=Renderer,
-        config=True,
-        help="Builder to use for this installation",
-    )
-
     executor_class = Type(
         LocalProcessExecutor,
         klass=BuildExecutor,
@@ -290,7 +281,6 @@ class JupyterBookPubApp(Application):
     aliases = Dict(
         {
             "config": "JupyterBookPubApp.config_file",
-            "builder": "JupyterBookPubApp.builder_class",
             "builder-config": "JupyterBookPubApp.builder_config_file",
             "executor": "JupyterBookPubApp.executor_class",
             "storage": "JupyterBookPubApp.storage_root",
@@ -364,7 +354,6 @@ class JupyterBookPubApp(Application):
 
         self.executor = self.executor_class(
             parent=self,
-            builder_class=self.builder_class,
             builder_config_file=self.builder_config_file,
         )
 
