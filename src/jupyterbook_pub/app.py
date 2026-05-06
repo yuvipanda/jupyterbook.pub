@@ -355,6 +355,7 @@ class JupyterBookPubApp(Application):
         self.executor = self.executor_class(
             parent=self,
             builder_config_file=self.builder_config_file,
+            storage_root=self.storage_root,
         )
 
     async def launch(self) -> None:

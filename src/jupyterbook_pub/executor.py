@@ -23,6 +23,11 @@ class BuildExecutor(LoggingConfigurable):
     )
     builder_config_file = Unicode(
         None, help="The builder config file to load", allow_none=True
+
+    storage_root = Unicode(
+        None,
+        allow_none=False,
+        help="Path to use for artifact (sites, repos) storage",
     )
 
     async def execute(
