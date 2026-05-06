@@ -40,8 +40,10 @@ from traitlets.config import Application
 
 from .cache import make_checkout_cache_key, make_rendered_cache_key
 from .executor import BuildExecutor, LocalProcessExecutor
-from .builder.base import Renderer
-from .builder.book import JupyterBook2Builder
+
+# Constants for name of unique storage paths
+BUILT_SITES_NAME = "built_sites"
+REPOS_NAME = "repos"
 
 USE_AUTHENTICATION = (
     "JUPYTERHUB_SERVICE_PREFIX" in os.environ
@@ -95,7 +97,7 @@ class BuiltRepoHandler(AppMixin, NoXSRFMixin, MaybeAuthenticatedMixin, StaticHan
 
     @maybe_authenticated
     async def get(self, arg: str):
-        root_build_path = Path(self.app.built_sites_root)
+        root_build_path = Path(self.app.storage_root) / BUILT_SITES_NAME
         root_build_path.mkdir(exist_ok=True)
 
         # Recieve the raw value of arg
@@ -141,8 +143,12 @@ class BuiltRepoHandler(AppMixin, NoXSRFMixin, MaybeAuthenticatedMixin, StaticHan
 class BuildHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
     @maybe_authenticated
     async def get(self):
-        root_build_path = Path(self.app.built_sites_root)
+        storage_path = Path(self.app.storage_root)
+
+        root_build_path = storage_path / BUILT_SITES_NAME
         root_build_path.mkdir(exist_ok=True)
+
+        repos_root_path = storage_path / REPOS_NAME
 
         spec = self.get_argument("spec")
         next_url = self.get_argument("next")
@@ -161,7 +167,7 @@ class BuildHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
                     self.redirect(next_url)
 
                 # Find the source content
-                repo_path = Path(app.repo_checkout_root) / make_checkout_cache_key(repo)
+                repo_path = repos_root_path / make_checkout_cache_key(repo)
                 if not repo_path.exists():
                     # First, fetch the repo
                     self.log.info(f"Fetching {repo}...\n")
@@ -228,15 +234,9 @@ class JupyterBookPubApp(Application):
     def _default_hub_token(self):
         return os.environ.get("JUPYTERHUB_API_TOKEN", "")
 
-    repo_checkout_root = Unicode(
-        "repos",
-        help="Path to check out repos to. Created if it doesn't exist",
-        config=True,
-    )
-
-    built_sites_root = Unicode(
-        "built_sites",
-        help="Path to copy built files to. Created if it doesn't exist",
+    storage_root = Unicode(
+        "persistent",
+        help="Path to use for artifact (sites, repos) storage",
         config=True,
     )
 
@@ -264,13 +264,6 @@ class JupyterBookPubApp(Application):
         config=True,
     )
 
-    builder_class = Type(
-        JupyterBook2Builder,
-        klass=Renderer,
-        config=True,
-        help="Builder to use for this installation",
-    )
-
     executor_class = Type(
         LocalProcessExecutor,
         klass=BuildExecutor,
@@ -282,16 +275,11 @@ class JupyterBookPubApp(Application):
     config_file = Unicode(
         "jupyterbook_pub_config.py", help="The config file to load", config=True
     )
-    builder_config_file = Unicode(
-        None, help="The builder config file to load", allow_none=True, config=True
-    )
     aliases = Dict(
         {
             "config": "JupyterBookPubApp.config_file",
-            "builder": "JupyterBookPubApp.builder_class",
-            "builder-config": "JupyterBookPubApp.builder_config_file",
-            "repos": "JupyterBookPubApp.repo_checkout_root",
-            "builds": "JupyterBookPubApp.built_sites_root",
+            "executor": "JupyterBookPubApp.executor_class",
+            "storage": "JupyterBookPubApp.storage_root",
             "resolver-ttl": "JupyterBookPubApp.resolver_cache_ttl_seconds",
             "resolver-size": "JupyterBookPubApp.resolver_cache_max_size",
         }
@@ -326,6 +314,17 @@ class JupyterBookPubApp(Application):
             self.log.info(f"Resolved {question} to {last_answer}")
         return last_answer
 
+    def ensure_storage(self):
+        # Ensure storage
+        storage_path = Path(self.storage_root)
+        storage_path.mkdir(exist_ok=True)
+
+        build_sites_path = storage_path / BUILT_SITES_NAME
+        build_sites_path.mkdir(exist_ok=True)
+
+        repos_path = storage_path / REPOS_NAME
+        repos_path.mkdir(exist_ok=True)
+
     @override
     def initialize(self, argv=None) -> None:
         super().initialize(argv)
@@ -343,8 +342,7 @@ class JupyterBookPubApp(Application):
             loader=FileSystemLoader(Path(__file__).parent / "templates")
         )
 
-        os.makedirs(self.built_sites_root, exist_ok=True)
-        os.makedirs(self.repo_checkout_root, exist_ok=True)
+        self.ensure_storage()
 
         self.resolver_cache = TTLCache(
             maxsize=self.resolver_cache_max_size, ttl=10 * 60
@@ -352,8 +350,7 @@ class JupyterBookPubApp(Application):
 
         self.executor = self.executor_class(
             parent=self,
-            builder_class=self.builder_class,
-            builder_config_file=self.builder_config_file,
+            storage_root=self.storage_root,
         )
 
     async def launch(self) -> None:
@@ -374,7 +371,7 @@ class JupyterBookPubApp(Application):
                     BuiltRepoHandler,
                     {
                         "app": self,
-                        "path": str(Path(self.built_sites_root)),
+                        "path": str(Path(self.storage_root) / BUILT_SITES_NAME),
                         "default_filename": "index.html",
                     },
                     name="render-repo",
