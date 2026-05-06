@@ -46,7 +46,7 @@ dependencies = [
     "libarchive-c",
     "jupyter-book-site-renderer",
     "jupyterhub",
-    "kubernetes"
+    "kubernetes_asyncio"
 ]
 
 [project.urls]
