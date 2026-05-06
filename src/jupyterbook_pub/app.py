@@ -275,13 +275,9 @@ class JupyterBookPubApp(Application):
     config_file = Unicode(
         "jupyterbook_pub_config.py", help="The config file to load", config=True
     )
-    builder_config_file = Unicode(
-        None, help="The builder config file to load", allow_none=True, config=True
-    )
     aliases = Dict(
         {
             "config": "JupyterBookPubApp.config_file",
-            "builder-config": "JupyterBookPubApp.builder_config_file",
             "executor": "JupyterBookPubApp.executor_class",
             "storage": "JupyterBookPubApp.storage_root",
             "resolver-ttl": "JupyterBookPubApp.resolver_cache_ttl_seconds",
@@ -354,7 +350,6 @@ class JupyterBookPubApp(Application):
 
         self.executor = self.executor_class(
             parent=self,
-            builder_config_file=self.builder_config_file,
             storage_root=self.storage_root,
         )
 
