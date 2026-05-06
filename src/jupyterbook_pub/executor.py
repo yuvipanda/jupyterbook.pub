@@ -307,7 +307,7 @@ class KubernetesExecutor(LockingExecutor):
             return self._core_api
 
         try:
-            await config.load_incluster_config()
+            config.load_incluster_config()
         except config.ConfigException:
             await config.load_kube_config()
         self._core_api = core_v1_api.CoreV1Api()
@@ -370,12 +370,16 @@ class KubernetesExecutor(LockingExecutor):
                 "subPath": os.fspath(build_path_relative_storage),
             },
         ]
+        volumes = [{"name": "storage", **self.storage_volume}]
         if builder_config_mount_path is not None:
             volumeMounts.append(
                 {
-                    "name": "builder-config-secret",
+                    "name": "secret",
                     "mountPath": os.fspath(builder_config_mount_path),
                 }
+            )
+            volumes.append(
+                {"name": "secret", "secret": {"secretName": self.builder_config_secret}}
             )
         # Create a new pod
         return {
@@ -393,7 +397,7 @@ class KubernetesExecutor(LockingExecutor):
                         "securityContext": self.security_context,
                     }
                 ],
-                "volumes": [{"name": "storage", **self.storage_volume}],
+                "volumes": volumes,
                 "securityContext": self.pod_security_context,
             },
         }
