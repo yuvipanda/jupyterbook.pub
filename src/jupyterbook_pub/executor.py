@@ -52,12 +52,7 @@ class LockingExecutor(BuildExecutor):
         value_trait=Instance(asyncio.Event),
     )
 
-    def prepare_process_cmd(
-        self,
-        repo_path: Path,
-        build_path: Path,
-        base_url: str,
-    ) -> list[str]:
+    def get_temporary_build_path(self, build_path: Path) -> Path:
         raise NotImplementedError
 
     async def execute(
@@ -67,7 +62,8 @@ class LockingExecutor(BuildExecutor):
         base_url: str,
     ):
         # Temporary build path
-        build_path = tempfile.mkdtemp()
+        build_path = self.get_temporary_build_path(dest_path)
+        build_path.mkdir(exist_ok=True)
 
         try:
             build_finished_event = self._build_events[dest_path]
@@ -78,9 +74,7 @@ class LockingExecutor(BuildExecutor):
 
             try:
                 self.log.info("Running first build")
-                cmd = self.prepare_process_cmd(repo_path, build_path, base_url)
-
-                await self.run_process(cmd)
+                await self.perform_build(repo_path, build_path, base_url)
 
                 # Atomic move
                 shutil.move(build_path, dest_path)
@@ -96,6 +90,29 @@ class LockingExecutor(BuildExecutor):
             self.log.info("Waiting for concurrent build to finish")
             await build_finished_event.wait()
             return
+
+
+class LockingProcessExecutor(LockingExecutor):
+    async def perform_build(
+        self,
+        repo_path: Path,
+        build_path: Path,
+        base_url: str,
+    ):
+        cmd = self.prepare_process_cmd(repo_path, build_path, base_url)
+
+        await self.run_process(cmd)
+
+    def prepare_process_cmd(
+        self,
+        repo_path: Path,
+        build_path: Path,
+        base_url: str,
+    ) -> list[str]:
+        raise NotImplementedError
+
+    def get_temporary_build_path(self, build_path: Path) -> Path:
+        return Path(tempfile.mkdtemp())
 
     async def run_process(
         self,
@@ -127,7 +144,7 @@ class LockingExecutor(BuildExecutor):
             raise ProcessFailedError("An error occurred whilst invoking process")
 
 
-class DockerExecutor(LockingExecutor):
+class DockerExecutor(LockingProcessExecutor):
     debug = Bool(False, config=True)
     engine = Unicode("docker", config=True)
     image = Unicode("jupyterbook-pub:latest", allow_none=False, config=True)
@@ -199,7 +216,7 @@ class DockerExecutor(LockingExecutor):
         return [*invocation_cmd, *builder_cmd]
 
 
-class LocalProcessExecutor(LockingExecutor):
+class LocalProcessExecutor(LockingProcessExecutor):
     def prepare_process_cmd(
         self,
         repo_path: Path,
