@@ -1,10 +1,18 @@
-from traitlets import Bool, Dict, Instance, Type, Unicode
-from traitlets.config import Application, LoggingConfigurable
+from traitlets import Bool, Dict, Instance, Type, Unicode, default
+from traitlets.config import LoggingConfigurable
 import asyncio
 import sys
 from pathlib import Path
 import tempfile
+import os
+import os.path
 import shutil
+import hashlib
+
+
+from kubernetes_asyncio import client, config
+from kubernetes_asyncio.client.api import core_v1_api
+from kubernetes_asyncio.client.rest import ApiException
 
 from .builder.base import Renderer, ReservedCommands
 from .builder.book import JupyterBook2Builder
@@ -239,3 +247,205 @@ class LocalProcessExecutor(LockingProcessExecutor):
                 )
             ]
         )
+
+
+def exponential_periods(dt: float, limit: float = None):
+    while True:
+        yield dt
+        dt *= 2
+
+        dt = min(dt, limit or dt)
+
+
+class KubernetesExecutor(LockingExecutor):
+    """
+    Kubernetes-based executor.
+
+    This executor makes the following assumptions:
+    1. The storage root used by the main application can be found under the volume
+       defined by `storage_volume`.
+    2. That the specific repo and build paths passed to BuildExecutor.execute
+       can be resolved relative to the main application storage root.
+    3. That the built_sites and repos paths (defined as constants in `utils.py`) can be
+       mounted with RW and RO permissions into the build pod.
+
+    Although configuration of the builder is understood via the `--config` argument to
+    the builder, each specific executor may make its own decisions about where to find
+    this file.
+
+    The Kubernetes executor provides the config file from a secret.
+    """
+
+    _core_api = Instance(default=None, allow_none=True, klass=core_v1_api.CoreV1Api)
+
+    namespace = Unicode(None, allow_none=False, config=True)
+    image = Unicode("jupyterbook-pub:latest", allow_none=False, config=True)
+    storage_volume = Dict(
+        None,
+        help="Kubernetes volume (ignoring the name) that provides the base application with storage",
+        allow_none=False,
+        config=True,
+    )
+    builder_config_secret = Unicode(None, allow_none=True, config=True)
+    builder_config_name = Unicode(
+        None,
+        help="The name of the builder config file to load",
+        allow_none=True,
+        config=True,
+    )
+    security_context = Dict(
+        help="Kubernetes container security context",
+        config=True,
+    )
+    pod_security_context = Dict(
+        help="Kubernetes pod security context",
+        config=True,
+    )
+
+    async def get_core_api(self):
+        if self._core_api is not None:
+            return self._core_api
+
+        try:
+            await config.load_incluster_config()
+        except config.ConfigException:
+            await config.load_kube_config()
+        self._core_api = core_v1_api.CoreV1Api()
+        return self._core_api
+
+    def get_temporary_build_path(self, build_path: Path) -> Path:
+        # The LockingExecutor uses move-after-build for "atomic" builds
+        # We create the temporary directory under the storage PVC (by choosing
+        # the name as a sibling of `build_path`).
+        # This naturally ensures that the file is visible to both the build pod
+        # and the executor.
+        return build_path.with_name(f"{build_path.name}-build-temp")
+
+    def get_pod_name(self, repo_path: Path, build_path: Path, base_url: str) -> str:
+        factory = hashlib.shake_256()
+        factory.update(os.fspath(repo_path).encode("utf-8"))
+        factory.update(os.fspath(build_path).encode("utf-8"))
+        factory.update(base_url.encode("utf-8"))
+        return f"jupyterbook-pub-build-{factory.hexdigest(16)}"
+
+    def get_pod_manifest(
+        self, pod_name: str, repo_path: Path, build_path: Path, base_url: str
+    ) -> dict:
+        repo_mount_path = Path("/srv/repo")
+        dest_mount_path = Path("/srv/build")
+
+        if self.builder_config_name is None:
+            builder_config_file_path = None
+            builder_config_mount_path = None
+        else:
+            builder_config_mount_path = Path("/var/run/secrets/jupyterbook.pub/")
+            builder_config_file_path = (
+                builder_config_mount_path / self.builder_config_name
+            )
+
+        builder_cmd = [
+            str(p)
+            for p in self.builder_class.entrypoint(
+                repo_mount_path,
+                dest_mount_path,
+                base_url,
+                config_path=builder_config_file_path,
+            )
+        ]
+
+        # Resolve the build path (temporary) and repo path relative to the storage root.
+        repo_path_relative_storage = repo_path.relative_to(self.storage_root)
+        build_path_relative_storage = build_path.relative_to(self.storage_root)
+
+        volumeMounts = [
+            {
+                "name": "storage",
+                "mountPath": os.fspath(repo_mount_path),
+                "readOnly": True,
+                "subPath": os.fspath(repo_path_relative_storage),
+            },
+            {
+                "name": "storage",
+                "mountPath": os.fspath(dest_mount_path),
+                "subPath": os.fspath(build_path_relative_storage),
+            },
+        ]
+        if builder_config_mount_path is not None:
+            volumeMounts.append(
+                {
+                    "name": "builder-config-secret",
+                    "mountPath": os.fspath(builder_config_mount_path),
+                }
+            )
+        # Create a new pod
+        return {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": pod_name},
+            "spec": {
+                "restartPolicy": "Never",
+                "containers": [
+                    {
+                        "image": self.image,
+                        "name": "build",
+                        "args": builder_cmd,
+                        "volumeMounts": volumeMounts,
+                        "securityContext": self.security_context,
+                    }
+                ],
+                "volumes": [{"name": "storage", **self.storage_volume}],
+                "securityContext": self.pod_security_context,
+            },
+        }
+
+    async def perform_build(self, repo_path: Path, build_path: Path, base_url: str):
+        pod_name = self.get_pod_name(repo_path, build_path, base_url)
+        core_api = await self.get_core_api()
+
+        self.log.info("Checking for existing pod")
+        try:
+            await core_api.read_namespaced_pod(name=pod_name, namespace=self.namespace)
+        except ApiException as err:
+            # We expect to be the only build job due to LockingExecutor
+            if err.status != 404:
+                raise RuntimeError(f"Unknown error: {err}")
+        else:
+            raise RuntimeError(f"Existing build pod encountered: {pod_name}")
+
+        # Create build pod
+        self.log.info("Creating build pod")
+        pod_manifest = self.get_pod_manifest(pod_name, repo_path, build_path, base_url)
+        resp = await core_api.create_namespaced_pod(
+            body=pod_manifest, namespace=self.namespace
+        )
+        try:
+            # Wait for pod to have non-pending status
+            for dt in exponential_periods(0.1, limit=5):
+                try:
+                    resp = await core_api.read_namespaced_pod(
+                        name=pod_name, namespace=self.namespace
+                    )
+                except ApiException as err:
+                    if err.status == 404:
+                        # Pod finished and was cleaned up, we don't need to delete
+                        return
+
+                    raise RuntimeError(f"Unknown error reading pod status: {err}")
+                match resp.status.phase:
+                    case "Pending" | "Running":
+                        await asyncio.sleep(dt)
+                    case "Succeeded":
+                        break
+                    case "Failed":
+                        raise RuntimeError(f"Pod failed: {pod_name}")
+        # Cleanup
+        finally:
+            self.log.info("Deleting build pod")
+            try:
+                await core_api.delete_namespaced_pod(
+                    name=pod_name, namespace=self.namespace
+                )
+            except ApiException as err:
+                # We expect to be the only build job due to LockingExecutor
+                if err.status != 404:
+                    raise RuntimeError(f"Unknown error: {err}")
