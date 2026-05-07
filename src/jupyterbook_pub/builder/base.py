@@ -31,9 +31,21 @@ class Renderer:
 
 
 class TraitletsRenderer(Renderer, Application):
-    repo_path = Unicode(None, allow_none=False, config=True)
-    built_path = Unicode(None, allow_none=False, config=True)
-    base_url = Unicode(None, allow_none=False, config=True)
+    repo_path = Unicode(
+        None, allow_none=False, config=True, help="Path to source repository"
+    )
+    built_path = Unicode(
+        None,
+        allow_none=False,
+        config=True,
+        help="Path to directly populate with build outputs",
+    )
+    base_url = Unicode(
+        None,
+        allow_none=False,
+        config=True,
+        help="Optional base URL to use for built site",
+    )
     config_file = Unicode("", help="Load this config file", config=True)
 
     aliases = {
