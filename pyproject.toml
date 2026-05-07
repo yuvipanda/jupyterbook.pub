@@ -81,6 +81,13 @@ types = [
 # Tool Configuration
 ################################################################################
 
+[tool.hatch.envs.docs]
+dependency-groups = [
+  "docs",
+]
+[tool.hatch.envs.docs.scripts]
+build = "env -C docs sphinx-build -M html . _build"
+
 # Hatch is building your package's wheel and sdist
 # This tells hatch to only include Python packages (i.e., folders with __init__.py) in the build.
 # read more about package building, here:
