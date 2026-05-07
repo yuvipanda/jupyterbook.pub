@@ -436,20 +436,21 @@ class KubernetesExecutor(LockingExecutor):
         if self.builder_resources is not None:
             build_container["resources"] = self.builder_resources
 
+        pod_spec = {
+            "restartPolicy": "Never",
+            "containers": [build_container],
+            "volumes": volumes,
+            "securityContext": self.pod_security_context,
+        }
         if self.builder_node_selector is not None:
-            build_container["nodeSelector"] = self.builder_node_selector
+            pod_spec["nodeSelector"] = self.builder_node_selector
 
         # Create a new pod
         return {
             "apiVersion": "v1",
             "kind": "Pod",
             "metadata": {"name": pod_name},
-            "spec": {
-                "restartPolicy": "Never",
-                "containers": [build_container],
-                "volumes": volumes,
-                "securityContext": self.pod_security_context,
-            },
+            "spec": pod_spec,
         }
 
     async def perform_build(self, repo_path: Path, build_path: Path, base_url: str):
