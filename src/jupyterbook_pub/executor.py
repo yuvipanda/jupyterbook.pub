@@ -10,7 +10,8 @@ import shutil
 import hashlib
 
 
-from kubernetes_asyncio import client, config
+from kubernetes_asyncio import config
+from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.client.api import core_v1_api
 from kubernetes_asyncio.client.rest import ApiException
 
@@ -276,8 +277,6 @@ class KubernetesExecutor(LockingExecutor):
     The Kubernetes executor provides the config file from a secret.
     """
 
-    _core_api = Instance(default=None, allow_none=True, klass=core_v1_api.CoreV1Api)
-
     namespace = Unicode(None, allow_none=False, config=True)
     image = Unicode("jupyterbook-pub:latest", allow_none=False, config=True)
     storage_volume = Dict(
@@ -301,17 +300,6 @@ class KubernetesExecutor(LockingExecutor):
         help="Kubernetes pod security context",
         config=True,
     )
-
-    async def get_core_api(self):
-        if self._core_api is not None:
-            return self._core_api
-
-        try:
-            config.load_incluster_config()
-        except config.ConfigException:
-            await config.load_kube_config()
-        self._core_api = core_v1_api.CoreV1Api()
-        return self._core_api
 
     def get_temporary_build_path(self, build_path: Path) -> Path:
         # The LockingExecutor uses move-after-build for "atomic" builds
@@ -403,53 +391,68 @@ class KubernetesExecutor(LockingExecutor):
         }
 
     async def perform_build(self, repo_path: Path, build_path: Path, base_url: str):
-        pod_name = self.get_pod_name(repo_path, build_path, base_url)
-        core_api = await self.get_core_api()
-
-        self.log.info("Checking for existing pod")
         try:
-            await core_api.read_namespaced_pod(name=pod_name, namespace=self.namespace)
-        except ApiException as err:
-            # We expect to be the only build job due to LockingExecutor
-            if err.status != 404:
-                raise RuntimeError(f"Unknown error: {err}")
-        else:
-            raise RuntimeError(f"Existing build pod encountered: {pod_name}")
+            config.load_incluster_config()
+        except config.ConfigException:
+            await config.load_kube_config()
 
-        # Create build pod
-        self.log.info("Creating build pod")
-        pod_manifest = self.get_pod_manifest(pod_name, repo_path, build_path, base_url)
-        resp = await core_api.create_namespaced_pod(
-            body=pod_manifest, namespace=self.namespace
-        )
-        try:
-            # Wait for pod to have non-pending status
-            for dt in exponential_periods(0.1, limit=5):
-                try:
-                    resp = await core_api.read_namespaced_pod(
-                        name=pod_name, namespace=self.namespace
-                    )
-                except ApiException as err:
-                    if err.status == 404:
-                        # Pod finished and was cleaned up, we don't need to delete
-                        return
+        async with ApiClient() as client:
+            # Some clusters have certificates that violate X509 strict requirements,
+            # such as JetStream2 on K8s 1.33
+            client.config.disable_strict_ssl_verification = True
 
-                    raise RuntimeError(f"Unknown error reading pod status: {err}")
-                match resp.status.phase:
-                    case "Pending" | "Running":
-                        await asyncio.sleep(dt)
-                    case "Succeeded":
-                        break
-                    case "Failed":
-                        raise RuntimeError(f"Pod failed: {pod_name}")
-        # Cleanup
-        finally:
-            self.log.info("Deleting build pod")
+            core_api = core_v1_api.CoreV1Api(client)
+
+            pod_name = self.get_pod_name(repo_path, build_path, base_url)
+
+            self.log.info("Checking for existing pod")
             try:
-                await core_api.delete_namespaced_pod(
+                await core_api.read_namespaced_pod(
                     name=pod_name, namespace=self.namespace
                 )
             except ApiException as err:
                 # We expect to be the only build job due to LockingExecutor
                 if err.status != 404:
                     raise RuntimeError(f"Unknown error: {err}")
+            else:
+                raise RuntimeError(f"Existing build pod encountered: {pod_name}")
+
+            # Create build pod
+            self.log.info("Creating build pod")
+            pod_manifest = self.get_pod_manifest(
+                pod_name, repo_path, build_path, base_url
+            )
+            resp = await core_api.create_namespaced_pod(
+                body=pod_manifest, namespace=self.namespace
+            )
+            try:
+                # Wait for pod to have non-pending status
+                for dt in exponential_periods(0.1, limit=5):
+                    try:
+                        resp = await core_api.read_namespaced_pod(
+                            name=pod_name, namespace=self.namespace
+                        )
+                    except ApiException as err:
+                        if err.status == 404:
+                            # Pod finished and was cleaned up, we don't need to delete
+                            return
+
+                        raise RuntimeError(f"Unknown error reading pod status: {err}")
+                    match resp.status.phase:
+                        case "Pending" | "Running":
+                            await asyncio.sleep(dt)
+                        case "Succeeded":
+                            break
+                        case "Failed":
+                            raise RuntimeError(f"Pod failed: {pod_name}")
+            # Cleanup
+            finally:
+                self.log.info("Deleting build pod")
+                try:
+                    await core_api.delete_namespaced_pod(
+                        name=pod_name, namespace=self.namespace
+                    )
+                except ApiException as err:
+                    # We expect to be the only build job due to LockingExecutor
+                    if err.status != 404:
+                        raise RuntimeError(f"Unknown error: {err}")
