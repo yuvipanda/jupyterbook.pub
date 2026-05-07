@@ -358,7 +358,7 @@ class KubernetesExecutor(LockingExecutor):
         # the name as a sibling of `build_path`).
         # This naturally ensures that the file is visible to both the build pod
         # and the executor.
-        return build_path.with_name(f"{build_path.name}-build-temp")
+        return build_path.with_name(f".{build_path.name}")
 
     def get_pod_name(self, repo_path: Path, build_path: Path, base_url: str) -> str:
         factory = hashlib.shake_256()
