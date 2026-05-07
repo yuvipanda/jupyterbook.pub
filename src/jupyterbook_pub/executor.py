@@ -14,6 +14,7 @@ from kubernetes_asyncio import config
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.client.api import core_v1_api
 from kubernetes_asyncio.client.rest import ApiException
+from kubernetes_asyncio.client import Configuration
 
 from .builder.base import Renderer, ReservedCommands
 from .builder.book import JupyterBook2Builder
@@ -394,18 +395,19 @@ class KubernetesExecutor(LockingExecutor):
         }
 
     async def perform_build(self, repo_path: Path, build_path: Path, base_url: str):
+        configuration = Configuration()
         try:
-            config.load_incluster_config()
+            config.load_incluster_config(client_configuration=configuration)
         except config.ConfigException:
-            await config.load_kube_config()
+            await config.load_kube_config(client_configuration=configuration)
 
-        async with ApiClient() as client:
-            # Some clusters have certificates that violate X509 strict requirements,
-            # such as JetStream2 on K8s 1.33
-            client.configuration.disable_strict_ssl_verification = (
-                self.disable_strict_ssl_verification
-            )
+        # Some clusters have certificates that violate X509 strict requirements,
+        # such as JetStream2 on K8s 1.33
+        configuration.disable_strict_ssl_verification = (
+            self.disable_strict_ssl_verification
+        )
 
+        async with ApiClient(configuration=configuration) as client:
             core_api = core_v1_api.CoreV1Api(client)
 
             pod_name = self.get_pod_name(repo_path, build_path, base_url)
