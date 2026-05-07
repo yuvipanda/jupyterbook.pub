@@ -1,4 +1,4 @@
-from traitlets import Bool, Dict, Instance, Type, Unicode, default
+from traitlets import Bool, Dict, Instance, Type, Unicode
 from traitlets.config import LoggingConfigurable
 import asyncio
 import sys
@@ -300,6 +300,9 @@ class KubernetesExecutor(LockingExecutor):
         help="Kubernetes pod security context",
         config=True,
     )
+    disable_strict_ssl_verification = Bool(
+        False, help="Disable strict X509 SSL verification", config=True
+    )
 
     def get_temporary_build_path(self, build_path: Path) -> Path:
         # The LockingExecutor uses move-after-build for "atomic" builds
@@ -399,7 +402,9 @@ class KubernetesExecutor(LockingExecutor):
         async with ApiClient() as client:
             # Some clusters have certificates that violate X509 strict requirements,
             # such as JetStream2 on K8s 1.33
-            client.config.disable_strict_ssl_verification = True
+            client.configuration.disable_strict_ssl_verification = (
+                self.disable_strict_ssl_verification
+            )
 
             core_api = core_v1_api.CoreV1Api(client)
 
