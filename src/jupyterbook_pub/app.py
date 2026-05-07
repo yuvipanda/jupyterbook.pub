@@ -35,11 +35,13 @@ from traitlets import (
     Integer,
     Type,
     Unicode,
+    TraitError,
 )
 from traitlets.config import Application
 
 from .cache import make_checkout_cache_key, make_rendered_cache_key
 from .executor import BuildExecutor, LocalProcessExecutor
+from .storage import StorageManager
 
 # Constants for name of unique storage paths
 BUILT_SITES_NAME = "built_sites"
@@ -178,6 +180,10 @@ class BuildHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
                 base_url = url_path_join(self.app.base_url, "repo", raw_spec)
                 await self.app.executor.execute(repo_path, build_path, base_url)
 
+                # Sweep the storage
+                self.app.built_sites_storage_manager.notify_of_build()
+                self.app.repos_storage_manager.notify_of_build()
+
                 # Redirect to `?next`
                 return self.redirect(next_url)
 
@@ -264,6 +270,18 @@ class JupyterBookPubApp(Application):
         config=True,
     )
 
+    built_sites_max_age_hours = Integer(
+        24, config=True, help="Max age of built site in hours before it is removed"
+    )
+    repos_max_age_hours = Integer(
+        12, config=True, help="Max age of downloaded repo in hours before it is removed"
+    )
+    storage_sweep_interval = Integer(
+        10,
+        config=True,
+        help="Number of successive builds before performing a successive sweep",
+    )
+
     executor_class = Type(
         LocalProcessExecutor,
         klass=BuildExecutor,
@@ -272,14 +290,25 @@ class JupyterBookPubApp(Application):
     )
     executor = Instance(klass=BuildExecutor)
 
+    storage_manager_class = Type(
+        StorageManager,
+        klass=StorageManager,
+        config=True,
+        help="Storage manager to use for this installation",
+    )
+    built_sites_storage_manager = Instance(klass=StorageManager)
+    repos_storage_manager = Instance(klass=StorageManager)
+
     config_file = Unicode(
         "jupyterbook_pub_config.py", help="The config file to load", config=True
     )
     aliases = Dict(
         {
+            "port": "JupyterBookPubApp.port",
             "config": "JupyterBookPubApp.config_file",
             "executor": "JupyterBookPubApp.executor_class",
             "storage": "JupyterBookPubApp.storage_root",
+            "storage-manager": "JupyterBookPubApp.storage_manager_class",
             "resolver-ttl": "JupyterBookPubApp.resolver_cache_ttl_seconds",
             "resolver-size": "JupyterBookPubApp.resolver_cache_max_size",
         }
@@ -293,6 +322,16 @@ class JupyterBookPubApp(Application):
             ),
         }
     )
+
+    @validate(
+        "built_sites_max_age_hours", "repos_max_age_hours", "storage_sweep_interval"
+    )
+    def _validate_ages(self, proposal):
+        value = proposal["value"]
+        name = proposal["trait"].name
+        if value < 0:
+            raise TraitError(f"{name} value must be positive integer, not {value}")
+        return value
 
     @observe("debug")
     def _observe_debug(self, change):
@@ -319,11 +358,24 @@ class JupyterBookPubApp(Application):
         storage_path = Path(self.storage_root)
         storage_path.mkdir(exist_ok=True)
 
-        build_sites_path = storage_path / BUILT_SITES_NAME
-        build_sites_path.mkdir(exist_ok=True)
+        built_sites_path = storage_path / BUILT_SITES_NAME
+        built_sites_path.mkdir(exist_ok=True)
 
         repos_path = storage_path / REPOS_NAME
         repos_path.mkdir(exist_ok=True)
+
+        self.built_sites_storage_manager = self.storage_manager_class(
+            parent=self,
+            max_age_hours=self.built_sites_max_age_hours,
+            storage_root=str(built_sites_path),
+            build_interval=self.storage_sweep_interval,
+        )
+        self.repos_storage_manager = self.storage_manager_class(
+            parent=self,
+            max_age_hours=self.repos_max_age_hours,
+            storage_root=str(repos_path),
+            build_interval=self.storage_sweep_interval,
+        )
 
     @override
     def initialize(self, argv=None) -> None:
