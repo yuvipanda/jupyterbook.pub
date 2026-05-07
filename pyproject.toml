@@ -32,7 +32,6 @@ classifiers = [
 ]
 # TODO: add keywords
 keywords = []
-# TODO: add dependencies
 dependencies = [
     "tornado",
     "repoproviders>=0.1.4",
@@ -56,10 +55,7 @@ Homepage = "https://github.com/yuvipanda/jupyterbook.pub"
 Documentation = "https://github.com/yuvipanda/jupyterbook.pub/blob/main/README.md"
 Download = "https://pypi.org/project/jupyterbook.pub/#files"
 
-[project.optional-dependencies]
-# The groups below should be in the [development-groups] table
-# They are here now because hatch hasn't released support for them but plans to
-# in Mid November 2025.
+[dependency-groups]
 dev = [
     "hatch",
     "pre-commit",
@@ -67,6 +63,9 @@ dev = [
 ]
 
 docs = [
+"autodoc-traits",
+"sphinx>9",
+"furo"
 ]
 
 build = [

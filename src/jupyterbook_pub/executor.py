@@ -292,6 +292,7 @@ class KubernetesExecutor(LockingExecutor):
     Kubernetes-based executor.
 
     This executor makes the following assumptions:
+
     1. The storage root used by the main application can be found under the volume
        defined by `storage_volume`.
     2. That the specific repo and build paths passed to BuildExecutor.execute
