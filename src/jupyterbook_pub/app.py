@@ -178,7 +178,8 @@ class BuildHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
 
                 # Define BASE_URL for the resolved path
                 base_url = url_path_join(self.app.base_url, "repo", raw_spec)
-                await self.app.executor.execute(repo_path, build_path, base_url)
+                async with asyncio.timeout(self.app.build_timeout_seconds):
+                    await self.app.executor.execute(repo_path, build_path, base_url)
 
                 # Sweep the storage
                 self.app.built_sites_storage_manager.notify_of_build()
@@ -276,6 +277,9 @@ class JupyterBookPubApp(Application):
     repos_max_age_hours = Integer(
         12, config=True, help="Max age of downloaded repo in hours before it is removed"
     )
+    build_timeout_seconds = Integer(
+        5 * 60, config=True, help="Max age of build in seconds before it is cancelled"
+    )
     storage_sweep_interval = Integer(
         10,
         config=True,
@@ -311,6 +315,7 @@ class JupyterBookPubApp(Application):
             "storage-manager": "JupyterBookPubApp.storage_manager_class",
             "resolver-ttl": "JupyterBookPubApp.resolver_cache_ttl_seconds",
             "resolver-size": "JupyterBookPubApp.resolver_cache_max_size",
+            "timeout": "JupyterBookPubApp.build_timeout_seconds",
         }
     )
     flags = Dict(
@@ -324,7 +329,10 @@ class JupyterBookPubApp(Application):
     )
 
     @validate(
-        "built_sites_max_age_hours", "repos_max_age_hours", "storage_sweep_interval"
+        "built_sites_max_age_hours",
+        "repos_max_age_hours",
+        "storage_sweep_interval",
+        "build_timeout_seconds",
     )
     def _validate_ages(self, proposal):
         value = proposal["value"]

@@ -149,8 +149,13 @@ class LockingProcessExecutor(LockingExecutor):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await proc.communicate()
+        except asyncio.CancelledError:
+            # Clean up on cancellation
+            proc.terminate()
+            await proc.wait()
+            raise
 
         is_error = proc.returncode != 0
 
