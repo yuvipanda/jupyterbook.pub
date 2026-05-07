@@ -345,6 +345,7 @@ class KubernetesExecutor(LockingExecutor):
     disable_strict_ssl_verification = Bool(
         False, help="Disable strict X509 SSL verification", config=True
     )
+    builder_resources = Dict(help="Kubernetes builder resources", config=True)
 
     def get_temporary_build_path(self, build_path: Path) -> Path:
         # The LockingExecutor uses move-after-build for "atomic" builds
@@ -428,6 +429,7 @@ class KubernetesExecutor(LockingExecutor):
                         "args": builder_cmd,
                         "volumeMounts": volumeMounts,
                         "securityContext": self.security_context,
+                        "resources": self.builder_resources,
                     }
                 ],
                 "volumes": volumes,
