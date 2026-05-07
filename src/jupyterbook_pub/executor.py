@@ -345,7 +345,12 @@ class KubernetesExecutor(LockingExecutor):
     disable_strict_ssl_verification = Bool(
         False, help="Disable strict X509 SSL verification", config=True
     )
-    builder_resources = Dict(help="Kubernetes builder resources", config=True)
+    builder_resources = Dict(
+        None, allow_none=True, help="Kubernetes builder resources", config=True
+    )
+    builder_node_selector = Dict(
+        None, allow_none=True, help="Kubernetes builder nodeSelector", config=True
+    )
 
     def get_temporary_build_path(self, build_path: Path) -> Path:
         # The LockingExecutor uses move-after-build for "atomic" builds
@@ -415,6 +420,20 @@ class KubernetesExecutor(LockingExecutor):
             volumes.append(
                 {"name": "secret", "secret": {"secretName": self.builder_config_secret}}
             )
+
+        build_container = {
+            "image": self.image,
+            "name": "build",
+            "args": builder_cmd,
+            "volumeMounts": volumeMounts,
+            "securityContext": self.security_context,
+        }
+        if self.builder_resources is not None:
+            build_container["resources"] = self.builder_resources
+
+        if self.builder_node_selector is not None:
+            build_container["nodeSelector"] = self.builder_node_selector
+
         # Create a new pod
         return {
             "apiVersion": "v1",
@@ -422,16 +441,7 @@ class KubernetesExecutor(LockingExecutor):
             "metadata": {"name": pod_name},
             "spec": {
                 "restartPolicy": "Never",
-                "containers": [
-                    {
-                        "image": self.image,
-                        "name": "build",
-                        "args": builder_cmd,
-                        "volumeMounts": volumeMounts,
-                        "securityContext": self.security_context,
-                        "resources": self.builder_resources,
-                    }
-                ],
+                "containers": [build_container],
                 "volumes": volumes,
                 "securityContext": self.pod_security_context,
             },
