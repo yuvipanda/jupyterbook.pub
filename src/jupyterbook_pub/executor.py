@@ -6,7 +6,6 @@ from pathlib import Path
 import tempfile
 import os
 import os.path
-import shutil
 import hashlib
 
 
@@ -24,6 +23,11 @@ class ProcessFailedError(Exception): ...
 
 
 class BuildExecutor(LoggingConfigurable):
+    """
+    Base class for a build executor.
+    """
+
+    # Build executor owns the builder
     builder_class = Type(
         JupyterBook2Builder,
         klass=Renderer,
@@ -32,6 +36,7 @@ class BuildExecutor(LoggingConfigurable):
         help="Builder to use for this installation",
     )
 
+    # Directly passed by caller
     storage_root = Unicode(
         None,
         allow_none=False,
@@ -49,8 +54,7 @@ class BuildExecutor(LoggingConfigurable):
 
 class LockingExecutor(BuildExecutor):
     """
-    Build executor that relies on local processes, using events for concurrency
-    control.
+    Build executor that uses in-memory events for concurrency control.
     """
 
     # Ensure that concurrent processes don't interleave around proc spawning
@@ -61,6 +65,13 @@ class LockingExecutor(BuildExecutor):
     )
 
     def get_temporary_build_path(self, build_path: Path) -> Path:
+        """
+        Return a temporary directory to perform the build in. Once the build
+        has completed, this path should be atomically moveable to the build destination.
+
+        :param build_path: path that this temporary directory will be moved to
+        (atomically).
+        """
         raise NotImplementedError
 
     async def execute(
@@ -85,7 +96,7 @@ class LockingExecutor(BuildExecutor):
                 await self.perform_build(repo_path, build_path, base_url)
 
                 # Atomic move
-                shutil.move(build_path, dest_path)
+                build_path.rename(dest_path)
                 self.log.info("Build completed")
             finally:
                 # Signal to other consumers, even if the build failed
@@ -101,6 +112,10 @@ class LockingExecutor(BuildExecutor):
 
 
 class LockingProcessExecutor(LockingExecutor):
+    """
+    Build executor that performs concurrent builds using local processes.
+    """
+
     async def perform_build(
         self,
         repo_path: Path,
@@ -153,9 +168,22 @@ class LockingProcessExecutor(LockingExecutor):
 
 
 class DockerExecutor(LockingProcessExecutor):
+    """
+    Build executor that performs containerised builds via the Docker CLI.
+    """
+
     debug = Bool(False, config=True)
-    engine = Unicode("docker", config=True)
-    image = Unicode("jupyterbook-pub:latest", allow_none=False, config=True)
+    engine = Unicode(
+        "docker",
+        config=True,
+        help="Docker-like runtime to use. Must support bind mounts, sysctl flags, env flags, rm, and workdir flags",
+    )
+    image = Unicode(
+        "jupyterbook-pub:latest",
+        allow_none=False,
+        config=True,
+        help="Container image to use for build environment",
+    )
     builder_config_file = Unicode(
         None, help="The builder config file to load", allow_none=True
     )
@@ -278,18 +306,30 @@ class KubernetesExecutor(LockingExecutor):
     The Kubernetes executor provides the config file from a secret.
     """
 
-    namespace = Unicode(None, allow_none=False, config=True)
-    image = Unicode("jupyterbook-pub:latest", allow_none=False, config=True)
+    namespace = Unicode(
+        None, allow_none=False, config=True, help="Kubernetes namespace to use"
+    )
+    image = Unicode(
+        "jupyterbook-pub:latest",
+        allow_none=False,
+        config=True,
+        help="Container image to use for build environment",
+    )
     storage_volume = Dict(
         None,
         help="Kubernetes volume (ignoring the name) that provides the base application with storage",
         allow_none=False,
         config=True,
     )
-    builder_config_secret = Unicode(None, allow_none=True, config=True)
+    builder_config_secret = Unicode(
+        None,
+        allow_none=True,
+        config=True,
+        help="Name of the Kubernetes secret to mount for builder config",
+    )
     builder_config_name = Unicode(
         None,
-        help="The name of the builder config file to load",
+        help="The name of the builder config file to load from the mounted secret",
         allow_none=True,
         config=True,
     )
