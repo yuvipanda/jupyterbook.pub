@@ -357,6 +357,9 @@ class KubernetesExecutor(LockingExecutor):
     affinity = Dict(help="Pod affinity", config=True)
     annotations = Dict(help="Pod annotations")
     labels = Dict(key_trait=Unicode(), value_trait=Unicode(), help="Pod labels")
+    extraLabels = Dict(
+        key_trait=Unicode(), value_trait=Unicode(), help="Additional pod labels"
+    )
     disable_strict_ssl_verification = Bool(
         False, help="Disable strict X509 SSL verification", config=True
     )
@@ -456,7 +459,7 @@ class KubernetesExecutor(LockingExecutor):
             "kind": "Pod",
             "metadata": {
                 "name": pod_name,
-                "labels": self.labels,
+                "labels": {**self.labels, **self.extraLabels},
                 "annotations": self.annotations,
             },
             "spec": pod_spec,
