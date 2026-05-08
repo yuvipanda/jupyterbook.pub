@@ -1,4 +1,4 @@
-from traitlets import Bool, Dict, Instance, Type, Unicode
+from traitlets import Bool, Dict, Instance, Type, List, Unicode
 from traitlets.config import LoggingConfigurable
 import asyncio
 import sys
@@ -317,9 +317,12 @@ class KubernetesExecutor(LockingExecutor):
     )
     image = Unicode(
         "jupyterbook-pub:latest",
-        allow_none=False,
         config=True,
         help="Container image to use for build environment",
+    )
+    image_pull_secrets = List(
+        help="Kubernetes secrets to use for pulling",
+        config=True,
     )
     storage_volume = Dict(
         None,
@@ -378,6 +381,7 @@ class KubernetesExecutor(LockingExecutor):
         repo_mount_path = Path("/srv/repo")
         dest_mount_path = Path("/srv/build")
 
+        # If there is a builder config file, we mount it as a secret
         if self.builder_config_name is None:
             builder_config_file_path = None
             builder_config_mount_path = None
@@ -415,6 +419,7 @@ class KubernetesExecutor(LockingExecutor):
             },
         ]
         volumes = [{"name": "storage", **self.storage_volume}]
+
         if builder_config_mount_path is not None:
             volumeMounts.append(
                 {
@@ -432,6 +437,7 @@ class KubernetesExecutor(LockingExecutor):
             "args": builder_cmd,
             "volumeMounts": volumeMounts,
             "securityContext": self.security_context,
+            "imagePullSecrets": self.image_pull_secrets,
         }
         if self.builder_resources is not None:
             build_container["resources"] = self.builder_resources
