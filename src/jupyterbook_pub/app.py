@@ -178,7 +178,12 @@ class BuildHandler(AppMixin, MaybeAuthenticatedMixin, RequestHandler):
 
                 # Define BASE_URL for the resolved path
                 base_url = url_path_join(self.app.base_url, "repo", raw_spec)
-                async with asyncio.timeout(self.app.build_timeout_seconds):
+                async with (
+                    # Limit build duration
+                    asyncio.timeout(self.app.build_timeout_seconds),
+                    # Limit concurrent builds
+                    self.app._build_semaphore,
+                ):
                     await self.app.executor.execute(repo_path, build_path, base_url)
 
                 # Sweep the storage
@@ -294,6 +299,11 @@ class JupyterBookPubApp(Application):
     )
     executor = Instance(klass=BuildExecutor)
 
+    max_concurrent_builds = Integer(
+        4, config=True, help="Maximum number of concurrent builds"
+    )
+    _build_semaphore = Instance(asyncio.Semaphore)
+
     storage_manager_class = Type(
         StorageManager,
         klass=StorageManager,
@@ -333,6 +343,7 @@ class JupyterBookPubApp(Application):
         "repos_max_age_hours",
         "storage_sweep_interval",
         "build_timeout_seconds",
+        "max_concurrent_builds",
     )
     def _validate_ages(self, proposal):
         value = proposal["value"]
@@ -412,6 +423,8 @@ class JupyterBookPubApp(Application):
             parent=self,
             storage_root=self.storage_root,
         )
+
+        self._build_semaphore = asyncio.Semaphore(self.max_concurrent_builds)
 
     async def launch(self) -> None:
         self.web_app = tornado.web.Application(
