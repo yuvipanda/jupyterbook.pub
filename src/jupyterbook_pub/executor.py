@@ -321,12 +321,12 @@ class KubernetesExecutor(LockingExecutor):
         help="Container image to use for build environment",
     )
     image_pull_secrets = List(
-        help="Kubernetes secrets to use for pulling",
+        help="Secrets to use for pulling",
         config=True,
     )
     storage_volume = Dict(
         None,
-        help="Kubernetes volume (ignoring the name) that provides the base application with storage",
+        help="Volume (ignoring the name) that provides the base application with storage relative to the storage_root trait",
         allow_none=False,
         config=True,
     )
@@ -343,22 +343,18 @@ class KubernetesExecutor(LockingExecutor):
         config=True,
     )
     security_context = Dict(
-        help="Kubernetes container security context",
+        help="Container security context",
         config=True,
     )
     pod_security_context = Dict(
-        help="Kubernetes pod security context",
+        help="Pod security context",
         config=True,
     )
     disable_strict_ssl_verification = Bool(
         False, help="Disable strict X509 SSL verification", config=True
     )
-    builder_resources = Dict(
-        None, allow_none=True, help="Kubernetes builder resources", config=True
-    )
-    builder_node_selector = Dict(
-        None, allow_none=True, help="Kubernetes builder nodeSelector", config=True
-    )
+    resources = Dict(None, allow_none=True, help="Container resources", config=True)
+    node_selector = Dict(None, allow_none=True, help="Pod nodeSelector", config=True)
 
     def get_temporary_build_path(self, build_path: Path) -> Path:
         # The LockingExecutor uses move-after-build for "atomic" builds
@@ -439,8 +435,8 @@ class KubernetesExecutor(LockingExecutor):
             "securityContext": self.security_context,
             "imagePullSecrets": self.image_pull_secrets,
         }
-        if self.builder_resources is not None:
-            build_container["resources"] = self.builder_resources
+        if self.resources is not None:
+            build_container["resources"] = self.resources
 
         pod_spec = {
             "restartPolicy": "Never",
@@ -448,8 +444,8 @@ class KubernetesExecutor(LockingExecutor):
             "volumes": volumes,
             "securityContext": self.pod_security_context,
         }
-        if self.builder_node_selector is not None:
-            pod_spec["nodeSelector"] = self.builder_node_selector
+        if self.node_selector is not None:
+            pod_spec["nodeSelector"] = self.node_selector
 
         # Create a new pod
         return {
