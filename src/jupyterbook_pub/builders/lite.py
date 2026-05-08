@@ -1,9 +1,8 @@
 import pathlib
-from jupyterbook_pub.builder.base import Renderer, ReservedCommands
+from jupyterbook_pub.builder import Builder, ReservedCommands
 
 
-class JupyterLiteBuilder(Renderer):
-    @classmethod
+class JupyterLiteBuilder(Builder):
     def entrypoint(
         cls,
         repo_path: pathlib.Path,

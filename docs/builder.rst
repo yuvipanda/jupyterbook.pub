@@ -23,6 +23,7 @@ Builders
       app.initialize()
       app.start()
       
-
-.. autoclass:: jupyterbook_pub.builder.lite.JupyterLiteBuilder
-.. autoconfigurable:: jupyterbook_pub.builder.book.JupyterBook2Builder
+.. autoconfigurable:: jupyterbook_pub.builder.Builder
+.. autoconfigurable:: jupyterbook_pub.builder.GenericBuilder
+.. autoconfigurable:: jupyterbook_pub.builders.lite.JupyterLiteBuilder
+.. autoconfigurable:: jupyterbook_pub.builders.book.JupyterBook2Builder

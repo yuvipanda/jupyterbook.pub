@@ -15,8 +15,8 @@ from kubernetes_asyncio.client.api import core_v1_api
 from kubernetes_asyncio.client.rest import ApiException
 from kubernetes_asyncio.client import Configuration
 
-from .builder.base import Renderer, ReservedCommands
-from .builder.book import JupyterBook2Builder
+from .builder import Builder, ReservedCommands
+from .builders.book import JupyterBook2Builder
 
 
 class ProcessFailedError(Exception): ...
@@ -30,11 +30,12 @@ class BuildExecutor(LoggingConfigurable):
     # Build executor owns the builder
     builder_class = Type(
         JupyterBook2Builder,
-        klass=Renderer,
+        klass=Builder,
         allow_none=False,
         config=True,
         help="Builder to use for this installation",
     )
+    builder = Instance(klass=Builder)
 
     # Directly passed by caller
     storage_root = Unicode(
@@ -50,6 +51,11 @@ class BuildExecutor(LoggingConfigurable):
         base_url: str,
     ):
         raise NotImplementedError
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.builder = self.builder_class(parent=self)
 
 
 class LockingExecutor(BuildExecutor):
@@ -250,7 +256,7 @@ class DockerExecutor(LockingProcessExecutor):
         ]
         builder_cmd = [
             str(p)
-            for p in self.builder_class.entrypoint(
+            for p in self.builder.entrypoint(
                 repo_mount_path,
                 dest_mount_path,
                 base_url,
@@ -274,7 +280,7 @@ class LocalProcessExecutor(LockingProcessExecutor):
         return tuple(
             [
                 sys.executable if p is ReservedCommands.python else str(p)
-                for p in self.builder_class.entrypoint(
+                for p in self.builder.entrypoint(
                     repo_path,
                     build_path,
                     base_url,
@@ -397,7 +403,7 @@ class KubernetesExecutor(LockingExecutor):
 
         builder_cmd = [
             str(p)
-            for p in self.builder_class.entrypoint(
+            for p in self.builder.entrypoint(
                 repo_mount_path,
                 dest_mount_path,
                 base_url,
