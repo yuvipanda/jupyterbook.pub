@@ -5,6 +5,8 @@ import dataclasses
 import shutil
 from pathlib import Path
 import tempfile
+import pathlib
+import logging
 from typing import Optional
 
 from traitlets import default, Bool, Instance, Unicode
@@ -13,7 +15,8 @@ from traitlets import default, Bool, Instance, Unicode
 from ruamel.yaml import YAML
 from jupyter_book_site_renderer import JupyterBookSiteRenderer
 
-from .base import TraitletsRenderer
+from ..builder import Builder, ReservedCommands
+from .base import BuilderApplication
 
 # We don't have to roundtrip here, because nobody reads that YAML
 yaml = YAML(typ="safe")
@@ -33,7 +36,33 @@ class Route:
 class ProcessFailedError(Exception): ...
 
 
-class JupyterBook2Builder(TraitletsRenderer):
+class JupyterBook2Builder(Builder):
+    def entrypoint(
+        cls,
+        repo_path: pathlib.Path,
+        build_path: pathlib.Path,
+        base_url: str,
+        config_path: pathlib.Path = None,
+    ) -> tuple[ReservedCommands | str, ...]:
+        entrypoint = [
+            ReservedCommands.python,
+            "-m",
+            cls.__module__,
+            "--repo",
+            repo_path,
+            "--dest",
+            build_path,
+            "--base-url",
+            base_url,
+            "--log-level",
+            str(logging.INFO),
+        ]
+        if config_path is not None:
+            entrypoint.extend(["--config", config_path])
+        return tuple(entrypoint)
+
+
+class JupyterBook2BuilderApp(BuilderApplication):
     """
     Build Jupyter Book from pre-built AST.
     If the AST does not exist, attempt a source build.
@@ -218,6 +247,6 @@ class JupyterBook2Builder(TraitletsRenderer):
 
 
 if __name__ == "__main__":
-    app = JupyterBook2Builder()
+    app = JupyterBook2BuilderApp()
     app.initialize()
     app.start()
