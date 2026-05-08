@@ -30,7 +30,7 @@ Each executor (docker, Kubernetes, local process) is designed to call this entry
 managing details like volume mounts, remote execution, etc.
 
 Custom builders can be used by creating an importable class that defines this
-entrypoint. 
+entrypoint, or using the GenericBuilder 
 
 ## Copyright
 
