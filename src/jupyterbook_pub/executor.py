@@ -350,11 +350,16 @@ class KubernetesExecutor(LockingExecutor):
         help="Pod security context",
         config=True,
     )
+    resources = Dict(help="Container resources", config=True)
+    node_selector = Dict(
+        key_trait=Unicode(), value_trait=Unicode(), help="Pod nodeSelector", config=True
+    )
+    affinity = Dict(help="Pod affinity", config=True)
+    annotations = Dict(help="Pod annotations")
+    labels = Dict(key_trait=Unicode(), value_trait=Unicode(), help="Pod labels")
     disable_strict_ssl_verification = Bool(
         False, help="Disable strict X509 SSL verification", config=True
     )
-    resources = Dict(None, allow_none=True, help="Container resources", config=True)
-    node_selector = Dict(None, allow_none=True, help="Pod nodeSelector", config=True)
 
     def get_temporary_build_path(self, build_path: Path) -> Path:
         # The LockingExecutor uses move-after-build for "atomic" builds
@@ -434,24 +439,26 @@ class KubernetesExecutor(LockingExecutor):
             "volumeMounts": volumeMounts,
             "securityContext": self.security_context,
             "imagePullSecrets": self.image_pull_secrets,
+            "resources": self.resources,
         }
-        if self.resources is not None:
-            build_container["resources"] = self.resources
-
         pod_spec = {
             "restartPolicy": "Never",
             "containers": [build_container],
             "volumes": volumes,
             "securityContext": self.pod_security_context,
+            "nodeSelector": self.node_selector,
+            "affinity": self.affinity,
         }
-        if self.node_selector is not None:
-            pod_spec["nodeSelector"] = self.node_selector
 
         # Create a new pod
         return {
             "apiVersion": "v1",
             "kind": "Pod",
-            "metadata": {"name": pod_name},
+            "metadata": {
+                "name": pod_name,
+                "labels": self.labels,
+                "annotations": self.annotations,
+            },
             "spec": pod_spec,
         }
 
